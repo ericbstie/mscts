@@ -12,7 +12,7 @@ from typing import cast
 import pytest
 from support.compared import PUMPKIN_NIGHTLY, VANILLA, status
 from support.play import CLIENTBOUND
-from support.text_nbt import nbt
+from support.text_nbt import Writable, nbt, wrapped
 
 from mscts.codec.packets import Codec, Packet, State
 from mscts.compare import ABSENT, Divergence, Mask, Observability, Verdict, compare
@@ -528,6 +528,34 @@ def test_a_difference_inside_a_component_that_reads_differently_is_gameplay_alon
     )
     assert _shown(verdict.gameplay) == [("reason.bold", ABSENT, "x", "play:disconnect.reason")]
     assert _traffic(verdict) == ()
+
+
+def test_a_list_element_wrapped_in_a_compound_with_an_empty_name_is_that_element() -> None:
+    verdict = _compared(
+        "minecraft:disconnect",
+        _disconnect(nbt({"text": "a", "extra": ["b", "c"]})),
+        _disconnect(nbt({"text": "a", "extra": wrapped("b", {"text": "c"})})),
+    )
+    assert verdict.gameplay == ()
+    assert [d.path for d in _traffic(verdict)] == ["reason.extra[0]", "reason.extra[1]"]
+
+
+def test_only_the_list_element_is_unwrapped_not_a_wrapper_inside_it() -> None:
+    verdict = _compared(
+        "minecraft:disconnect",
+        _disconnect(nbt({"text": "a", "extra": ["b"]})),
+        _disconnect(nbt({"text": "a", "extra": wrapped({"": "b"})})),
+    )
+    assert [d.path for d in verdict.gameplay] == ['reason.extra[0][""]', "reason.extra[0].text"]
+
+
+def test_a_kick_reason_nested_as_deep_as_nbt_allows_is_compared() -> None:
+    # Past 255 levels the value is one leaf (Nested), never equal to what a server sent.
+    deep: Writable = "a"
+    for _ in range(511):
+        deep = [deep]
+    verdict = _compared("minecraft:disconnect", _disconnect(nbt(deep)), _disconnect(nbt("a")))
+    assert [d.test_case for d in verdict.gameplay] == ["play:disconnect.reason"]
 
 
 def test_a_kick_reason_that_does_not_decode_is_compared_as_its_bytes() -> None:

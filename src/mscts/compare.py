@@ -2834,7 +2834,27 @@ def _canonical_text_components(
 
 def _canonical_component(value: _Value) -> _Value:
     decoded = _decoded_component(value)
-    return decoded if isinstance(decoded, bytes) else _text_component(decoded)
+    return decoded if isinstance(decoded, bytes) else _text_component(_unwrapped(decoded))
+
+
+def _unwrapped(value: _Value) -> _Value:
+    """`value`, a decoded tag, with each list element `{"": tag}` as that tag, at any depth.
+
+    The client loads each list element with `ListTag.addAndUnwrap`, whose `tryUnwrap` takes
+    a compound of size 1 with a tag named "" as that tag (javap, `ListTag.tryUnwrap`). It
+    unwraps one level: the tag inside stays as it is, but its own lists are unwrapped too.
+    """
+    if isinstance(value, dict):
+        return {key: _unwrapped(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_unwrapped(_unwrapped_element(item)) for item in value]
+    return value
+
+
+def _unwrapped_element(element: _Value) -> _Value:
+    if isinstance(element, dict) and element.keys() == {""}:
+        return element[""]
+    return element
 
 
 def _component_root(components: _Trie, path: _Path) -> _Path:
