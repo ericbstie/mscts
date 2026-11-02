@@ -2834,7 +2834,40 @@ def _canonical_text_components(
 
 def _canonical_component(value: _Value) -> _Value:
     decoded = _decoded_component(value)
-    return decoded if isinstance(decoded, bytes) else _text_component(_unwrapped(decoded))
+    return decoded if isinstance(decoded, bytes) else _read_component(_unwrapped(decoded))
+
+
+def _read_component(component: _Value) -> _Value:
+    """A decoded text component written as the object the client reads it as.
+
+    A string is `{"text": string}` and a list its first component with the rest added to its
+    `extra` (`_from_list`), as `_text_component` writes a JSON one, and each object is as
+    `_read_object` writes it. The components are `component` itself, each element of its list
+    form, and each element of its `extra`, recursively.
+    """
+    if isinstance(component, str):
+        return {"text": component}
+    if isinstance(component, list):
+        return _from_list([_read_component(element) for element in component])
+    if isinstance(component, dict):
+        return _read_object(component)
+    return component
+
+
+def _read_object(component: dict[str, _Value]) -> dict[str, _Value]:
+    """`component`, a text component's object, with the spellings the client reads alike as one.
+
+    - `"type": "text"` is dropped when `text` is a string: with a `type` the contents codec
+      takes that type's codec, and without one the first codec that reads the object, text
+      first (javap, `ComponentSerialization$StrictEither.decode`, `FuzzyCodec.decode`; the
+      text codec is `PlainTextContents.MAP_CODEC`, a string `text`).
+    """
+    result = dict(component)
+    if isinstance(extra := result.get("extra"), list):
+        result["extra"] = [_read_component(element) for element in extra]
+    if result.get("type") == "text" and isinstance(result.get("text"), str):
+        del result["type"]
+    return result
 
 
 def _unwrapped(value: _Value) -> _Value:

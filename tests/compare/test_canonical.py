@@ -558,6 +558,29 @@ def test_a_kick_reason_nested_as_deep_as_nbt_allows_is_compared() -> None:
     assert [d.test_case for d in verdict.gameplay] == ["play:disconnect.reason"]
 
 
+def test_a_text_component_that_names_its_type_text_is_one_that_does_not() -> None:
+    verdict = _compared(
+        "minecraft:disconnect",
+        _disconnect(nbt({"text": "a", "extra": ["b"]})),
+        _disconnect(nbt({"type": "text", "text": "a", "extra": [{"type": "text", "text": "b"}]})),
+    )
+    assert verdict.gameplay == ()
+
+
+@pytest.mark.parametrize(
+    "typed",
+    [
+        pytest.param({"type": "translatable", "text": "a", "translate": "a"}, id="another-type"),
+        pytest.param({"type": "text", "translate": "a"}, id="no-text"),
+    ],
+)
+def test_a_type_other_than_text_or_a_text_type_without_text_stays(typed: Writable) -> None:
+    verdict = _compared(
+        "minecraft:disconnect", _disconnect(nbt({"text": "a"})), _disconnect(nbt(typed))
+    )
+    assert "reason.type" in [d.path for d in verdict.gameplay]
+
+
 def test_a_kick_reason_that_does_not_decode_is_compared_as_its_bytes() -> None:
     no_tag, kick = b"\x00", nbt("kick")
     verdict = _compared("minecraft:disconnect", _disconnect(kick), _disconnect(no_tag))
