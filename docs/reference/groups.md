@@ -851,6 +851,21 @@ together. In a frozen world the scheduled ticks of the fluids run only on the ti
 steps, so each placement takes effect on the tick its delay says. A window lasts until every
 source has had its last scheduled tick, which leaves none due for the next play.
 
+## The world border (`world`)
+
+The border's size and centre, its warnings and damage, and how a command changes them. Every Group
+plays in a frozen world. Vanilla saves the border with the world, so each Group sets every
+setting back to vanilla's default when it ends. Control is in creative while a Group plays: a
+border leaves Control's place far outside it, and a survival Control would take border damage
+there.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `world/border-commands` | exact | none | A Bot called `warden`, an operator, runs `worldborder set 20`, `set 40 5`, `center 10 10`, `warning distance 3`, `warning time 5`, `damage amount 1`, `damage buffer 2` and `get`, each in a window of its own. A window holds the border packet the command makes and the warden's feedback. Vanilla reads a number of time with no unit as ticks, so `set 40 5` is a lerp of 5 ticks, not 5 seconds, and `center 10 10` centres the border on 10.5, 10.5. `get` reads 20, because the world is frozen in the middle of the lerp. The two damage commands send chat only. | none |
+| `world/border-lerp` | tick-exact | none | A border of 20 grows to 40 over 10 ticks. After each of 12 steps, the 10 of the lerp and 2 more, the warden reads the size with `worldborder get` in a window of its own. After the 4th step a second Bot joins, in a window of the border packets, in the middle of the lerp. Then the border shrinks to 10 over 10 ticks, the world steps 12 ticks in one window of the border packets, and the warden reads the size again. Vanilla moves the border on the world's clock: it stands still in a frozen world, advances one tick for each tick stepped, and `get` reads 22, 24, up to 40, and 40 after that. It sends no packet on any tick of the lerp, or when the lerp ends. The second Bot is sent where the border is and the ticks it has left: from 28 to 40 with 6 ticks left. | none |
+| `world/border-collision` | tick-exact | none | A survival Bot walks along x toward a border 16 wide around 0, 0, whose edge is at x 8. In a window for each walk it is put at a start and moves once a tick, and the world steps after each move: 0.2, 0.3 and 0.5 a tick from 6.5, a move of a block from 7.5 to 8.5, and last 0.2 a tick from 9.5, outside the border, back in. Vanilla stops a move at the edge, and sends the player back with `player_position` only if the move it stopped is off by more than 0.25 blocks. So it sends nothing at 0.2 a tick, and at 0.3 a tick it sends the player back to x 7.7 on each of the 5 moves from the edge on. At 0.5 a tick and in the jump it sends x 7.5. A walk back in sends nothing. | none |
+| `world/border-damage` | exact | none | The border is 16 wide, and hurts 1 point a block outside it, past a buffer of 2 blocks. A Bot is killed and respawned so that it is fresh, then put at x 12.5, 4.5 blocks outside the border and 2.5 past the buffer. It takes three hits, each in a window that ends on the hit, and the first window holds the move. Vanilla hurts it 2 points every 10 ticks, with the `outside_border` damage type, and sends `damage_event` and `set_health` and no sound, hurt animation or entity event. The windows wait for hits instead of stepping the world, so this Group is `exact`: vanilla ticks a player in real time while the world is frozen, so a stepped window holds as many hits as the loop that steps it takes wall time (9 of 10 probe plays matched on a quiet host, and 0 of 5 under load). | none |
+
 ## Redstone (`redstone`)
 
 When repeaters, comparators, torches, observers and dust switch, tick by tick, in what order
