@@ -65,6 +65,7 @@ test needs it:
 | `codec/particles.py` | `PARTICLE` (all 128 types of 26.3 and their options) and `POSITION_SOURCE` |
 | `codec/equipment.py` | `EquipmentList`, `EQUIPMENT`, `SLOTS`: the slots of `set_equipment`, each with an item stack |
 | `codec/shapes.py` | the wire shapes the data components and the entity metadata share: `UNIT`, `NBT_TAG`, `COMPOUND_TAG`, `TEXT_COMPONENT`, `REGISTRY_ID`, `ENUM`, `OrdinalEnum`, `SOUND_SOURCE`, `FixedArray`, `Deferred`, `registry_dispatch`, `Holder`, `Either`, `HOLDER_SET`, `SECTION_POSITION`, `VEC3`, `SOUND_EVENT`, `GLOBAL_POS`, `PAINTING_VARIANT`, `RESOLVABLE_PROFILE` |
+| `codec/nbt.py` | `decode(data)`: one network NBT tag as the client reads it, a `Value` (`Numeric` and `Array` keep each number's tag type) |
 | `codec/components.py` | the data component table: `ComponentTable`, `TABLE` (every name of `minecraft:data_component_type`, in id order, with its value's wire type), `ComponentType` and `COMPONENT_TYPE` (a type by name), `TypedComponent` and `TYPED_COMPONENT` (a type id and its value), `Patch` and `PATCH` (`DataComponentPatch`), `ITEM_STACK_TEMPLATE` |
 | `codec/items.py` | `SLOT`, the item stack field, and `HASHED_SLOT`, the hashed stack a client sends (the wire type only) |
 | `codec/schemas/<state>.py` | the Target's packet schemas, one module per State; play is a package, one module per mechanic |
@@ -320,6 +321,18 @@ SLOTS: tuple[str, ...]             # the 8 EquipmentSlot constants in ordinal or
 class EquipmentList:               # WireType[list[dict[str, object]]]
     item: WireType[object]         # how each slot's item is carried
 EQUIPMENT: WireType[list[dict[str, object]]]  # EquipmentList(SLOT): each slot's item is a stack or None
+
+# codec/nbt.py: network NBT decoded as the 26.3 client's NbtIo reads it (#335). Strings are
+# modified UTF-8 (readUTF), a repeated compound name keeps its last value, 512 levels at most;
+# a list's `{"": value}` elements stay wrapped. WireError for anything schema.NBT refuses.
+@frozen
+class Numeric:                   # a numeric tag: kind "byte", "short", "int", "long", "float" or
+    kind: str; value: int | float  # "double"; two kinds are two values, equal numbers or not
+@frozen
+class Array:                     # an array tag: kind "byte_array", "int_array" or "long_array"
+    kind: str; values: tuple[int, ...]
+type Value = Numeric | Array | str | list[Value] | dict[str, Value] | None  # None: TAG_End
+def decode(data: bytes) -> Value  # exactly one root tag, every byte read
 
 # codec/shapes.py: the shapes the data components are built from.
 UNIT: WireType[None]             # no bytes (StreamCodec.unit): reads None, writes only None
