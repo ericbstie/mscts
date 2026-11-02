@@ -557,6 +557,22 @@ another component or leaves one out.
 What a component added to the stack in the changed slot holds, such as
 how damaged the item is. A difference changes that part of the item.
 
+## `container_set_slot.slot_data.components.added[].value[].enchantment`
+
+**Changed slot item enchantment**
+
+Which enchantment an enchantments component added to the stack in the
+changed slot names, such as `minecraft:sharpness`. A difference enchants
+the item with another enchantment.
+
+## `container_set_slot.slot_data.components.added[].value[].level`
+
+**Changed slot item enchantment level**
+
+The level of one enchantment in an enchantments component added to the
+stack in the changed slot. A difference gives the item a stronger or
+weaker enchantment.
+
 ## `container_set_slot.slot_data.components.removed`
 
 **Changed slot item removed components**

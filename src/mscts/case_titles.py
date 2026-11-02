@@ -86,6 +86,12 @@ TITLES: Mapping[str, str] = MappingProxyType(
         "container_set_slot.slot_data.components.added[]": "Changed slot item component",
         "container_set_slot.slot_data.components.added[].type": "Changed slot item component name",
         "container_set_slot.slot_data.components.added[].value": "Changed slot item component data",
+        "container_set_slot.slot_data.components.added[].value[].enchantment": (
+            "Changed slot item enchantment"
+        ),
+        "container_set_slot.slot_data.components.added[].value[].level": (
+            "Changed slot item enchantment level"
+        ),
         "container_set_slot.slot_data.components.removed": "Changed slot item removed components",
         "container_set_slot.slot_data.components.removed[]": "Changed slot item removed component",
         "container_set_slot.slot_data.count": "Changed slot item count",

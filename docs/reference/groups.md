@@ -183,6 +183,25 @@ messages too. A server that kicks for fewer than 10 messages differs there.
 The kicks are the last cases, so a server that never kicks makes the Bot wait out its timeout
 only after the rest are compared.
 
+## Commands (`commands`)
+
+What a command answers, and what it sends around the answer. A Bot called `commander`, an operator, runs each command itself in a window of its own, so that the window holds what the server tells it. Control sets each case up before the window. The world is frozen, random ticks and the weather cycle are off, and joins are pinned to the spawn.
+
+Each window waits for the chat messages vanilla sends for the command: one for a success or an execution error, two for a parse error (the error, then the line with its context). Where vanilla sends none, the commander runs `/tellraw @s "mscts-end"` after the command and waits for that. A window compares the chat the commander receives and the packets the command sends from inside itself, such as a teleport or an item in the inventory. The Groups leave out what vanilla draws at random or sends on a schedule of its own, such as the sound of picking up the item a `give` drops.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `commands/success` | exact | none | The commander runs a valid form of 21 common commands, each in a window of its own: `setblock`, `fill`, `clone`, `summon`, `kill` (one pig, then two), `tp`, `give`, `enchant`, `clear`, `effect give`, `xp add`, `gamemode`, `difficulty`, `time set`, `weather`, `gamerule`, `tick rate`, `seed`, `list`, `execute if block` and `say`. A second operator, `witness`, stays in the world, and its chat is compared too: vanilla tells every other operator the feedback of most commands, but not of `seed`, `list` and `execute`. The last window is a `fill` of 28 672 blocks with a `tellraw @s` sent right after it, which vanilla answers in the order sent. | none |
+| `commands/errors` | exact | none | The commander runs 28 commands wrong, each in a window of its own: an unknown command, a block, item, effect or entity that does not exist, an argument that is missing, is a word where a number goes or is out of range (a `give` of 0, `tick rate 0`), a position outside the world, a command that changes nothing (a `setblock` of the block already there, `difficulty normal` on normal), and a selector that matches nothing (`kill`, `tp`). A `gamemode survival` for a player already in survival is the one case vanilla answers with nothing, so the window ends with the marker. | none |
+| `commands/permissions` | exact | none | A player who is not an operator runs `gamemode creative`, `op player`, `tp 0.5 -60 0.5` and `list`, each in a window of its own. Vanilla answers the first three as an unknown command, with the two red messages of a parse error, and runs `list`. The Group keeps to four commands, because vanilla kicks a player who is not an operator for spam at about its 10th command within a second or so. | none |
+| `commands/no-feedback` | exact | none | With `send_command_feedback` false, the commander runs, each in a window of its own: a `setblock` that succeeds, a `setblock` of a block that does not exist, a `setblock` of the block already there, `gamemode creative`, `list`, a `kill` that matches nothing, an unknown command, `tellraw @s` and `say`. Vanilla sends no feedback for a command that succeeds, but still answers one that fails, and `tellraw` and `say` are not affected. A window where the server may send nothing ends with the marker. The rule is set back to true afterwards. | none |
+
+Vanilla answers a command it cannot parse with two red messages: the error, then the command up to the point where parsing stopped, marked with `<--[HERE]`. A command that fails while it runs answers one red message.
+
+Vanilla answers from inside the command and sends block changes on the next tick, so after `setblock`, `fill` and `clone` the chat comes first and the block change after it. A server that sends them the other way round shows a difference.
+
+`summon` and a `kill` of one entity name it in the message with a hover that holds its UUID, which vanilla draws at random. `commands/success` summons its pig with a UUID of its own. `tick query` is not run, because its tick times come from the wall clock. `tick rate 20` is run instead.
+
 ## Joining a world (`join`)
 
 What a player receives when it joins, up to the end of the first chunk batch: the login, the configuration (registries, tags and enabled features) and the first play packets (the world, difficulty, abilities, position, inventory, health, experience, recipes, advancements, the world border and the first chunks).
