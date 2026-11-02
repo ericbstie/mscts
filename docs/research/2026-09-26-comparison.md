@@ -163,6 +163,81 @@ Divergences: `"enforceSecureChat": true` and `"favicon": null`.
   no tooltip will appear. Notchian servers will omit this field if there
   are no players".
 
+## Text components in NBT (#335) — verified 2026-11-02
+
+Read with `javap -c -p -constants` on the 26.3 **client** jar
+(`scripts/research/javap.py client`). In play, every text component is
+network NBT (`ComponentSerialization.TRUSTED_STREAM_CODEC` and its
+relatives), read with `NbtOps`, then decoded by the same component codec
+as the JSON above.
+
+- **The tag.** A root is a type byte and that type's payload, with no
+  name. A String is modified UTF-8 (`DataInput.readUTF`, from
+  `StringTag$1` and `CompoundTag$1.loadCompound`). A repeated name in a
+  compound keeps its last value (`CompoundTag$1.loadCompound` puts each
+  entry into a `HashMap`). Lists and compounds nest at most 512 deep
+  (`NbtAccounter`).
+- **Wrapped list elements.** `ListTag$1.loadList` adds each element with
+  `ListTag.addAndUnwrap`, and `tryUnwrap` takes a compound of size 1
+  whose tag named `""` is not null as that tag. One level only: the
+  tag inside is not unwrapped again, but its own lists are loaded the
+  same way. Vanilla writes a list of mixed tag types this way.
+- **The contents' `type`.** The contents map codec is
+  `ComponentSerialization$StrictEither("type", typed, fuzzy)`. Its
+  `decode` takes the typed codec when `type` is present, and otherwise
+  `FuzzyCodec.decode`, which tries each contents codec in the order they
+  were bootstrapped (text, translatable, keybind, score, selector, nbt,
+  object; `ExtraCodecs$LateBoundIdMapper` keeps them in a Guava
+  `HashBiMap`, in insertion order) and takes the first that reads the
+  object. The text codec is `PlainTextContents.MAP_CODEC`,
+  `Codec.STRING.fieldOf("text")`. So `{"type": "text", "text": s}` and
+  `{"text": s}` are the same component when `s` is a string.
+- **Style flags.** `Style$Serializer.MAP_CODEC` reads `bold`, `italic`,
+  `underlined`, `strikethrough` and `obfuscated` with
+  `Codec.BOOL.optionalFieldOf` (not lenient) into a nullable `Boolean`.
+  `Codec.BOOL` calls `NbtOps.getBooleanValue`, which is
+  `getNumberValue(tag).map(n -> n.doubleValue() != 0)`: any numeric tag
+  is read, NaN is true (`dcmpl`) and -0.0 false. A String is refused
+  (`getNumberValue` takes numeric tags only). A false flag is kept in the
+  style, so it is not the same as an absent one.
+- **Translation arguments.** `TranslatableContents.MAP_CODEC` reads
+  `with` as `ARG_CODEC.listOf().optionalFieldOf("with")`. `ARG_CODEC` is
+  `Codec.either(PRIMITIVE_ARG_CODEC, ComponentSerialization.CODEC)`
+  mapped by `lambda$static$0`: a primitive as it is, a component as
+  `requireNonNullElse(c.tryCollapseToString(), c)`.
+  `PRIMITIVE_ARG_CODEC` is `ExtraCodecs.JAVA` (a converter to
+  `JavaOps`; `NbtOps.convertTo` makes a numeric tag its boxed number and
+  a String a `String`) validated by `filterAllowedArguments` (a
+  `Number`, `Boolean` or `String`). `Component.tryCollapseToString`
+  gives the text of a plain text component with no siblings and an
+  empty style, else null. `getArgument` returns a `Component` as it is,
+  null as `TEXT_NULL`, and anything else as
+  `FormattedText.of(arg.toString())`. So the argument `"5"`, the byte
+  5, the int 5 and `{"text": "5"}` all show as the text `5`. A float's
+  `toString` is Java's (`1.0E10`), which the Comparison does not model,
+  so float arguments are left as they are.
+- **Colour.** `color` is `TextColor.CODEC`,
+  `Codec.STRING.comapFlatMap(TextColor::parseColor, ...)`.
+  `parseColor` reads `#` and then `Integer.parseInt(rest, 16)`, refused
+  below 0 or above 0xFFFFFF, or else a name from `NAMED_COLORS`, which
+  `TextColor.<clinit>` fills with the sixteen names (`black` 0x000000,
+  `dark_blue` 0x0000AA, `dark_green` 0x00AA00, `dark_aqua` 0x00AAAA,
+  `dark_red` 0xAA0000, `dark_purple` 0xAA00AA, `gold` 0xFFAA00, `gray`
+  0xAAAAAA, `dark_gray` 0x555555, `blue` 0x5555FF, `green` 0x55FF55,
+  `aqua` 0x55FFFF, `red` 0xFF5555, `light_purple` 0xFF55FF, `yellow`
+  0xFFFF55, `white` 0xFFFFFF). `TextColor.equals` compares the class and
+  the `value` field only. So `"red"`, `"#FF5555"` and `"#ff5555"` are the
+  same colour.
+- **Hover text.** `hover_event` is `HoverEvent.CODEC`, dispatched on
+  `action`; `show_text`'s `HoverEvent$ShowText.CODEC` is
+  `ComponentSerialization.CODEC.fieldOf("value")`, so its value is a text
+  component read like any other.
+- **Not modelled.** A key the codecs never read (a record codec ignores
+  one), the `separator` of selector and NBT contents, a `show_entity`
+  hover's `name`, `fallback`, float translation arguments and colours
+  spelled with non-ASCII digits all stay as sent. Each such difference
+  is still a gameplay Divergence, never a missed one.
+
 ## Python's json module (for the harness) — verified
 
 - `json.loads` read 5000 nested arrays and raised `RecursionError` at
