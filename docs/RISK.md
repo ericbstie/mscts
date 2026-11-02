@@ -105,6 +105,12 @@ caught, or "none".
 
 | PR | Triage suggested | Lead chose | Reviews | Blocking findings | Stress runs |
 | --- | --- | --- | --- | --- | --- |
+| #540 |  | medium | the lead's diff read | 0 (one low: `commands/success` leaves `time set 1000`; two untitled Report names, titled in the lead's commit) | Self-check of the four `commands/*` Groups 20 of 20 once under `--stress`; fake-server tests 40 of 40 under `--stress`; mutation sweep 30 of 32, one gap pinned, two equivalent |
+| #539 |  | medium | the lead's diff read | 0 | `glitches/headless-pistons` 20 of 20 once under `--stress`; fake-server tests 40 of 40 under `--stress`; mutation sweep 38 of 38 |
+| #538 |  | medium | the lead's diff read | 0 | Self-check of the four `player/effect-*` Groups 20 of 20 once under `--stress`; fake-server tests 40 of 40 under `--stress`; mutation sweep 44 of 45, one equivalent |
+| #537 |  | medium | the lead's diff read | 0 (one low: `_Hits` imported from `groups/player.py`) | Self-check of the four `world/border-*` Groups 20 of 20 once under `--stress`; fake-server tests 40 of 40 under `--stress`; mutation sweep 29 of 33, two gaps pinned, two equivalent |
+| #536 |  | medium | the lead's diff read | 0 | Self-check of the three `weather/*` Groups 20 of 20 once under `--stress`; fake-server tests 40 of 40 under `--stress`; mutation sweep 28 of 34, two gaps pinned, four equivalent |
+| #534 |  | high | the first review (races and ordering), the second review (a wrong Verdict), the lead's diff read of the fix round | 0, 0, 0 (one should-fix each, the same docs sentence; fixed) | `tests/run/test_run_crashed.py`, `test_run_hung.py` and `test_run_frozen.py` 5 of 5 under `--stress` before and after the fix round; mutation sweep 14 of 14; a 45-minute `entities/*` Run on Pumpkin 6458950 and one with Pumpkin killed (`scripts/research/crash_candidate.py`) |
 | #530 |  | medium | the lead's diff read | 0 | `entities/pushing` 20 of 20 and the `entities/cramming` statistical Self-check once each under `--stress`; mutation sweeps 25 of 25 and 44 of 45 (one equivalent) |
 | #529 |  | medium | the lead's diff read | 0 | Self-check of the three `entities/activation-*` Groups 20 of 20 five times under `--stress` (100 plays each); mutation sweep 60 of 60 |
 | #528 |  | medium | the lead's diff read | 0 | Self-check of the three `glitches/*` Groups 20 of 20 five times under `--stress` (100 plays each); mutation sweep 33 of 33; a live mutant killed by the new reference test |

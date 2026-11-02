@@ -195,6 +195,45 @@ briefs at 3–6 increments and about 1500 lines at most.
 
 ## Log
 
+### 2026-11-02: train 46
+
+- Merged #534 (#531), #536 (#64), #537 (#68), #538 (#58), #539 (#533)
+  and #540 (#66), each on its own stacked tip with the reference tier 38
+  of 38 and the candidate tier 15 of 15 against Pumpkin nightly 6458950,
+  which no longer panics after 300 s. The train ran on the maintainer's
+  last day of usage, as parallel Workflows (two to three batches side by
+  side, four to five agents).
+- New catalogue tests, 16 Groups from five issues, each from a probe's
+  fact sheet: `weather/*` (#64, three tick-exact Groups), `world/border-*`
+  (#68, four Groups and the six border packet schemas), `player/effect-*`
+  (#58, four Groups), `glitches/headless-pistons` (#533) and `commands/*`
+  (#66, four Groups). Pumpkin: sends weather game events while the world
+  is frozen, sends a border lerp time in milliseconds and has no border
+  collision or damage, sends no entity data and no `remove_mob_effect`
+  for instant effects, fails every glitch Group on `/setblock` with block
+  states, and answers commands a tick later in a task of its own.
+- Where the fact sheets corrected the issues: `weather clear` needs 62
+  steps, not 30; `worldborder set 40 5` is 5 ticks; border damage and a
+  player's effects tick on the wall clock in a frozen world, so those
+  Groups are `exact` and compare order, not ticks; a headless piston is
+  placed with `strict` (a plain `/setblock` retracts it at once) and a
+  sticky one with stone two ahead removes nothing in 26.3 (the Wiki is
+  wrong); the `execute if block` window ran on air. The fact sheet's
+  play time for #533 (68 s a pair) was 108 s a play measured.
+- #534 (#531): a launched Instance that crashes, or loses its connection,
+  in a Group that froze its world is restarted with its pair before the
+  next Group; that Group stays the server's `mismatch`. Two reviews, one
+  should-fix each (the same docs sentence), fixed.
+- #335 (text components compared as bytes) taken as core work in
+  parallel, scrutiny high: see its own entry once merged.
+- Filed #535: fake-server Group tests with sub-second bounds flaked twice
+  under host load during the integrators' `rebase -x` checks; both pass
+  alone.
+- Process: Workflows run in parallel up to the agent cap, one integrator
+  each, ordered by marker files; the lead pushes the stacked refs;
+  briefs tell Workflow agents never to call the thread's messaging tools
+  (a hook note misled one builder, which died mid-commit).
+
 ### 2026-10-29: train 45
 
 - Merged in three batches: #521 (#515), #522 (#516), #523 (#513), #526
