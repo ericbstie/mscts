@@ -625,6 +625,49 @@ def test_a_false_style_flag_is_not_an_absent_one(flag: str) -> None:
     assert _shown(verdict.gameplay) == [(f"reason.{flag}", ABSENT, False, "play:disconnect.reason")]
 
 
+@pytest.mark.parametrize(
+    "argument",
+    [
+        pytest.param(Numeric("byte", 5), id="byte"),
+        pytest.param(Numeric("long", 5), id="long"),
+        pytest.param({"text": "5"}, id="plain-text"),
+        pytest.param(["5"], id="list-form"),
+        pytest.param({"type": "text", "text": "5"}, id="typed-text"),
+    ],
+)
+def test_a_translation_argument_that_shows_the_same_text_is_the_same(argument: Writable) -> None:
+    verdict = _compared(
+        "minecraft:disconnect",
+        _disconnect(nbt({"translate": "k", "with": wrapped("5")})),
+        _disconnect(nbt({"translate": "k", "with": wrapped(argument)})),
+    )
+    assert verdict.gameplay == ()
+
+
+@pytest.mark.parametrize(
+    ("argument", "shown"),
+    [
+        pytest.param(Numeric("double", 5.0), 5.0, id="float"),
+        pytest.param(
+            {"text": "5", "bold": Numeric("byte", 0)}, {"text": "5", "bold": False}, id="style"
+        ),
+        pytest.param(
+            {"text": "5", "extra": ["6"]}, {"text": "5", "extra": [{"text": "6"}]}, id="extra"
+        ),
+        pytest.param({"translate": "5"}, {"translate": "5"}, id="translatable"),
+    ],
+)
+def test_a_translation_argument_not_shown_to_be_its_text_stays(
+    argument: Writable, shown: object
+) -> None:
+    verdict = _compared(
+        "minecraft:disconnect",
+        _disconnect(nbt({"translate": "k", "with": wrapped("5")})),
+        _disconnect(nbt({"translate": "k", "with": wrapped(argument)})),
+    )
+    assert _shown(verdict.gameplay) == [("reason.with[0]", "5", shown, "play:disconnect.reason")]
+
+
 def test_a_kick_reason_that_does_not_decode_is_compared_as_its_bytes() -> None:
     no_tag, kick = b"\x00", nbt("kick")
     verdict = _compared("minecraft:disconnect", _disconnect(kick), _disconnect(no_tag))
