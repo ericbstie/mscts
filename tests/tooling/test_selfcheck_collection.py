@@ -45,26 +45,29 @@ def test_there_is_a_test_for_every_registered_group_and_no_other(suite: pytest.P
 @pytest.mark.parametrize(
     ("repeat", "budgets"),
     [
-        (None, (900, 900, 900, 900, 900, 900, 900)),
-        ("", (900, 900, 900, 900, 900, 900, 900)),
-        ("1", (900, 900, 900, 900, 900, 900, 900)),
-        ("3", (900, 900, 900, 900, 900, 900, 900)),
-        ("20", (1800, 4500, 3840, 3000, 3200, 2800, 3800)),
-        ("40", (3600, 9000, 7680, 6000, 6400, 5600, 7600)),
+        (None, (900, 900, 900, 900, 900, 900, 900, 900)),
+        ("", (900, 900, 900, 900, 900, 900, 900, 900)),
+        ("1", (900, 900, 900, 900, 900, 900, 900, 900)),
+        ("3", (900, 900, 900, 900, 900, 900, 900, 900)),
+        ("20", (1800, 4500, 3840, 3000, 3200, 2800, 3800, 4400)),
+        ("40", (3600, 9000, 7680, 6000, 6400, 5600, 7600, 8800)),
     ],
 )
 def test_the_collected_selfchecks_have_a_bounded_timeout_for_the_repeat_count(
     pytester: pytest.Pytester,
     monkeypatch: pytest.MonkeyPatch,
     repeat: str | None,
-    budgets: tuple[int, int, int, int, int, int, int],
+    budgets: tuple[int, int, int, int, int, int, int, int],
 ) -> None:
     """`budgets`: the seconds of any Group and of each Group with its own play limit.
 
     In order: any Group, `player/starvation`, `player/fall`, `glitches/bedrock-breaking`,
-    `glitches/tnt-duplication`, `glitches/rail-carpet-duplication` and `weather/commands`.
+    `glitches/tnt-duplication`, `glitches/rail-carpet-duplication`, `weather/commands` and
+    `glitches/headless-pistons`.
     """
-    timeout_s, starvation_s, fall_s, bedrock_s, tnt_s, rail_carpet_s, weather_s = budgets
+    (timeout_s, starvation_s, fall_s, bedrock_s, tnt_s, rail_carpet_s, weather_s, headless_s) = (
+        budgets
+    )
     if repeat is None:
         monkeypatch.delenv("MSCTS_SELFCHECK_REPEAT", raising=False)
     else:
@@ -92,6 +95,7 @@ def pytest_collection_finish(session):
         "glitches/tnt-duplication": tnt_s,
         "glitches/rail-carpet-duplication": rail_carpet_s,
         "weather/commands": weather_s,
+        "glitches/headless-pistons": headless_s,
     }
     result.stdout.fnmatch_lines(
         [f"selfcheck budget {group_id} {limits[group_id]}" for group_id in GROUPS]
