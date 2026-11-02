@@ -356,3 +356,50 @@ _PERMISSIONS_UNDO = ("gamemode survival player", "deop player")
 async def permissions(context: GroupContext) -> None:
     """A player who is not an operator runs three operator commands, and `list`."""
     await _play(context, _Outline((PLAYER,), _PERMISSIONS, _PERMISSIONS_UNDO))
+
+
+# `commands/no-feedback`: `send_command_feedback` false, then a few commands.
+
+_NO_FEEDBACK = (
+    _Case(
+        "setblock 4 -60 4 minecraft:stone",
+        setup=("setblock 4 -60 4 minecraft:air",),
+        answers=0,
+        marker=True,
+    ),
+    _Case("setblock 4 -60 4 minecraft:not_a_block", answers=2),
+    _Case("setblock 4 -60 4 minecraft:stone", answers=0, marker=True),
+    _Case(
+        "gamemode creative",
+        answers=0,
+        marker=True,
+        effects=("minecraft:game_event", "minecraft:player_abilities"),
+    ),
+    _Case("list", answers=0, marker=True),
+    _Case("kill @e[tag=nothing]"),
+    _Case("notacommand", answers=2),
+    _Case('tellraw @s "told"'),
+    _Case("say Hello with no feedback", signed=True),
+)
+"""Vanilla stops the feedback of a command that succeeds, and answers a failure, `tellraw` and
+`say` as before; the effects still come. The marker ends the windows where vanilla sends nothing,
+and the failed `setblock` of the block already there: Pumpkin answers nothing to that, and a
+counted wait timed out there."""
+
+_NO_FEEDBACK_START = ("gamerule send_command_feedback false",)
+
+_NO_FEEDBACK_UNDO = (
+    "gamerule send_command_feedback true",
+    "gamemode survival commander",
+    _AREA_CLEAR,
+)
+"""The rule goes back on first, so that the undo's own feedback is as vanilla's default."""
+
+
+@group("commands/no-feedback", spec=_with_operators)
+async def no_feedback(context: GroupContext) -> None:
+    """With `send_command_feedback` false, the commander runs commands that succeed and fail."""
+    await _play(
+        context,
+        _Outline((COMMANDER,), _NO_FEEDBACK, _NO_FEEDBACK_UNDO, _NO_FEEDBACK_START),
+    )

@@ -219,6 +219,35 @@ PERMISSIONS = (
 
 PERMISSIONS_UNDO = ("gamemode survival player", "deop player")
 
+NO_FEEDBACK = (
+    Want(
+        "setblock 4 -60 4 minecraft:stone",
+        setup=("setblock 4 -60 4 minecraft:air",),
+        answers=0,
+        marker=True,
+    ),
+    Want("setblock 4 -60 4 minecraft:not_a_block", answers=2),
+    Want("setblock 4 -60 4 minecraft:stone", answers=0, marker=True),
+    Want(
+        "gamemode creative",
+        answers=0,
+        marker=True,
+        effects=("minecraft:game_event", "minecraft:player_abilities"),
+    ),
+    Want("list", answers=0, marker=True),
+    Want("kill @e[tag=nothing]"),
+    Want("notacommand", answers=2),
+    Want('tellraw @s "told"'),
+    Want("say Hello with no feedback", signed=True),
+)
+
+NO_FEEDBACK_START = ("gamerule send_command_feedback false",)
+NO_FEEDBACK_UNDO = (
+    "gamerule send_command_feedback true",
+    "gamemode survival commander",
+    AREA_CLEAR,
+)
+
 
 @dataclass(frozen=True)
 class Plan:
@@ -228,6 +257,7 @@ class Plan:
     bots: tuple[str, ...]
     windows: tuple[Want, ...]
     undo: tuple[str, ...]
+    start: tuple[str, ...] = ()
 
 
 PLANS = {
@@ -237,6 +267,13 @@ PLANS = {
     "commands/errors": Plan(commands.COMMANDER, (commands.COMMANDER,), ERRORS, ERRORS_UNDO),
     "commands/permissions": Plan(
         commands.PLAYER, (commands.PLAYER,), PERMISSIONS, PERMISSIONS_UNDO
+    ),
+    "commands/no-feedback": Plan(
+        commands.COMMANDER,
+        (commands.COMMANDER,),
+        NO_FEEDBACK,
+        NO_FEEDBACK_UNDO,
+        NO_FEEDBACK_START,
     ),
 }
 GROUP_IDS = tuple(PLANS)
@@ -526,7 +563,7 @@ async def test_control_sets_each_window_up_before_it_opens_and_runs_nothing_insi
     result = await play(group_id)
     plan = PLANS[group_id]
 
-    start = fixture_start(plan.bots)
+    start = (*fixture_start(plan.bots), *plan.start)
     assert result.windows[0].before == (*start, *plan.windows[0].setup)
     assert [window.before for window in result.windows[1:]] == [
         want.setup for want in plan.windows[1:]
@@ -652,3 +689,18 @@ async def test_permissions_sends_no_more_commands_than_a_player_may_before_the_s
 
     mine = [s for s in sent(result.transcript) if s.bot == commands.PLAYER]
     assert len(mine) <= chat_groups.UNDER_SPAM_MESSAGES
+
+
+@pytest.mark.asyncio
+async def test_no_feedback_turns_the_rule_off_after_the_fixture_and_on_before_it_undoes_it() -> (
+    None
+):
+    result = await play("commands/no-feedback")
+    plan = PLANS["commands/no-feedback"]
+
+    first = result.windows[0].before
+    assert first[len(fixture_start(plan.bots))] == "gamerule send_command_feedback false"
+    assert result.after[0] == "gamerule send_command_feedback true"
+    assert not any(
+        "send_command_feedback" in command for w in result.windows[1:] for command in w.before
+    )

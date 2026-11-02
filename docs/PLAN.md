@@ -1434,8 +1434,8 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   feedback is compared; `WITNESS` — the second operator of `commands/success`, which vanilla
   tells every command's feedback; `ANSWER_TIMEOUT_S` — how long a Bot waits for what a
   command answers; `PLAYER` — the Bot of `commands/permissions` that is not an operator;
-  `success`, `errors` and `permissions` — the `commands/success`, `commands/errors` and
-  `commands/permissions` scripts.
+  `success`, `errors`, `permissions` and `no_feedback` — the `commands/success`,
+  `commands/errors`, `commands/permissions` and `commands/no-feedback` scripts.
 - `run`: `status_version` — status version extraction.
 
 ```python
