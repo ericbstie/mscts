@@ -6,6 +6,7 @@ equal is still reported, as network traffic (test_observability.py).
 Status packets are built through the Target's real Codec.
 """
 
+import struct
 from collections.abc import Iterable
 from typing import cast
 
@@ -666,6 +667,18 @@ def test_a_translation_argument_not_shown_to_be_its_text_stays(
         _disconnect(nbt({"translate": "k", "with": wrapped(argument)})),
     )
     assert _shown(verdict.gameplay) == [("reason.with[0]", "5", shown, "play:disconnect.reason")]
+
+
+def test_a_float_translation_argument_is_never_a_double_one_of_the_same_number() -> None:
+    # The client shows Float.toString(0.1f), "0.1", against Double.toString of the same
+    # number, "0.10000000149011612" (javap, NbtOps.convertTo, TranslatableContents.getArgument).
+    widened = struct.unpack(">f", struct.pack(">f", 0.1))[0]
+    verdict = _compared(
+        "minecraft:disconnect",
+        _disconnect(nbt({"translate": "k", "with": wrapped(Numeric("float", 0.1))})),
+        _disconnect(nbt({"translate": "k", "with": wrapped(Numeric("double", widened))})),
+    )
+    assert [d.path for d in verdict.gameplay] == ["reason.with[0]"]
 
 
 _COLOURS = {

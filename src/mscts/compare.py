@@ -2174,8 +2174,19 @@ def _hide_all(fields: dict[str, _Value], paths: Iterable[_MaskPath]) -> frozense
     return frozenset(found)
 
 
-_LEAF_TYPES: frozenset[type] = frozenset({bool, int, float, str, bytes, UUID})
-"""The exact types of the model's leaves besides None; no subclasses (not an IntEnum)."""
+class _Float(float):
+    """A float tag's number in a text component, never the same as a double tag's (`_same`).
+
+    `NbtOps.convertTo` makes a float tag a `Float` and a double tag a `Double`, and a translation
+    argument shows each with its own `toString` (javap, `TranslatableContents.getArgument`):
+    0.1f shows `0.1`, a double of the same number `0.10000000149011612`.
+    """
+
+    __slots__ = ()
+
+
+_LEAF_TYPES: frozenset[type] = frozenset({bool, int, float, _Float, str, bytes, UUID})
+"""The exact types of the model's leaves besides None; no other subclasses (not an IntEnum)."""
 
 
 def _plain_mapping(
@@ -2769,8 +2780,8 @@ def _decoded_component(value: _Value) -> _Value:
     """`value`, a text component's NBT bytes, decoded into the value model, as it came.
 
     It stays as it is unless it is bytes that decode to a tag (not TAG_End). A number is its
-    int or float, and an array a list of ints; a value deeper than 255 levels is cut, as
-    `_plain` cuts a field's.
+    int or float (a float tag's a `_Float`), and an array a list of ints; a value deeper than
+    255 levels is cut, as `_plain` cuts a field's.
     """
     if not isinstance(value, bytes):
         return value
@@ -2784,9 +2795,9 @@ def _decoded_component(value: _Value) -> _Value:
 
 
 def _from_nbt(value: nbt.Value) -> object:
-    """`value` with each `Numeric` as its number and each `Array` as a list. Iterative.
+    """`value` with each `Numeric` as its number (`_Float` for a float) and each `Array` a list.
 
-    A decoded tag nests up to 512 levels, deeper than a recursive walk may go.
+    Iterative: a decoded tag nests up to 512 levels, deeper than a recursive walk may go.
     """
     root: list[object] = [None]
     pending: list[tuple[nbt.Value, list[object] | dict[str, object], int | str]] = [
@@ -2804,7 +2815,7 @@ def _from_nbt(value: nbt.Value) -> object:
             pending.extend((item, items, index) for index, item in enumerate(node))
             copy = items
         elif isinstance(node, nbt.Numeric):
-            copy = node.value
+            copy = _Float(node.value) if node.kind == "float" else node.value
         elif isinstance(node, nbt.Array):
             copy = list(node.values)
         else:
@@ -2878,7 +2889,7 @@ def _read_object(component: dict[str, _Value]) -> dict[str, _Value]:
     if result.get("type") == "text" and isinstance(result.get("text"), str):
         del result["type"]
     for flag in _STYLE_FLAGS & result.keys():
-        if type(value := result[flag]) in {int, float}:
+        if type(value := result[flag]) in {int, float, _Float}:
             result[flag] = value != 0
     if "color" in result:
         result["color"] = _read_color(result["color"])
@@ -2945,7 +2956,8 @@ def _read_argument(argument: _Value) -> _Value:
     (`Component.tryCollapseToString`); `getArgument` shows any argument but a component as
     its `toString()` (javap). So an integer is its decimal text, and a component that reads
     as `{"text": s}` alone (`_read_component`) is `s`. Any other component stays an object,
-    and a float stays a number: Java writes it its own way (`1.0E10`).
+    and a float or a double stays a number of its own kind (`_Float`): Java writes each its own
+    way (`1.0E10`).
     """
     if type(argument) is int:
         return str(argument)

@@ -215,7 +215,12 @@ as the JSON above.
   `FormattedText.of(arg.toString())`. So the argument `"5"`, the byte
   5, the int 5 and `{"text": "5"}` all show as the text `5`. A float's
   `toString` is Java's (`1.0E10`), which the Comparison does not model,
-  so float arguments are left as they are.
+  so float arguments are left as they are. `NbtOps.convertTo` makes a
+  float tag a `Float` (`createFloat`, offset 327) and a double tag a
+  `Double` (`createDouble`, offset 373), and each has its own
+  `toString`: the float 0.1 shows `0.1`, and a double of the same number
+  `0.10000000149011612` (Java 25). So a float argument is never the
+  same as a double one, even with the same number.
 - **Colour.** `color` is `TextColor.CODEC`,
   `Codec.STRING.comapFlatMap(TextColor::parseColor, ...)`.
   `parseColor` reads `#` and then `Integer.parseInt(rest, 16)`, refused
