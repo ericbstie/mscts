@@ -285,7 +285,7 @@ CLIENTBOUND: Mapping[str, Schema] = {
         registry_names(TARGET.minecraft_version, "minecraft:command_argument_type")
     ),
     # System Chat Message: a message from the server, such as a command's feedback. The
-    # content is a text component, kept as its NBT bytes until text components decode.
+    # content is a text component, kept as its NBT bytes; the Comparison decodes it.
     "minecraft:system_chat": Schema(content=NBT, overlay=BOOL),
 }
 

@@ -7,6 +7,7 @@ Status packets are built through the Target's real Codec.
 """
 
 from collections.abc import Iterable
+from typing import cast
 
 import pytest
 from support.compared import PUMPKIN_NIGHTLY, VANILLA, status
@@ -535,3 +536,100 @@ def test_a_kick_reason_that_does_not_decode_is_compared_as_its_bytes() -> None:
     assert _shown(verdict.gameplay) == [
         ("reason", {"text": "kick"}, no_tag, "play:disconnect.reason")
     ]
+
+
+_COMPONENTS = [
+    pytest.param("minecraft:system_chat", ("content",), "system_chat.content", id="system_chat"),
+    pytest.param(
+        "minecraft:disguised_chat", ("message",), "disguised_chat.message", id="disguised_chat"
+    ),
+    pytest.param(
+        "minecraft:disguised_chat",
+        ("sender_name",),
+        "disguised_chat.sender_name",
+        id="disguised_chat-sender",
+    ),
+    pytest.param(
+        "minecraft:disguised_chat",
+        ("target_name",),
+        "disguised_chat.target_name",
+        id="disguised_chat-target",
+    ),
+    pytest.param(
+        "minecraft:player_chat",
+        ("unsigned_content",),
+        "player_chat.unsigned_content",
+        id="player_chat",
+    ),
+    pytest.param(
+        "minecraft:player_chat",
+        ("sender_name",),
+        "player_chat.sender_name",
+        id="player_chat-sender",
+    ),
+    pytest.param(
+        "minecraft:player_chat",
+        ("target_name",),
+        "player_chat.target_name",
+        id="player_chat-target",
+    ),
+    pytest.param(
+        "minecraft:player_combat_kill",
+        ("message",),
+        "player_combat_kill.message",
+        id="player_combat_kill",
+    ),
+    pytest.param(
+        "minecraft:open_screen", ("window_title",), "open_screen.window_title", id="open_screen"
+    ),
+    pytest.param(
+        "minecraft:update_advancements",
+        ("advancements", 0, "display", "title"),
+        "update_advancements.advancements[].display.title",
+        id="advancement-title",
+    ),
+    pytest.param(
+        "minecraft:update_advancements",
+        ("advancements", 0, "display", "description"),
+        "update_advancements.advancements[].display.description",
+        id="advancement-description",
+    ),
+    pytest.param(
+        "minecraft:player_info_update",
+        ("players", 0, "display_name"),
+        "player_info_update.players[].display_name",
+        id="player_info_update",
+    ),
+]
+"""Each other text component in play: its packet, where it is, and its test case."""
+
+
+def _holding(name: str, path: tuple[str | int, ...], component: bytes) -> Packet:
+    """A `name` packet with `component` at `path` (index 0 a one-element list) and nothing else."""
+    value: object = component
+    for step in reversed(path):
+        value = [value] if isinstance(step, int) else {step: value}
+    return packet(name, fields=cast("dict[str, object]", value))
+
+
+def _rendered(path: tuple[str | int, ...]) -> str:
+    return "".join(f"[{step}]" if isinstance(step, int) else f".{step}" for step in path)[1:]
+
+
+@pytest.mark.parametrize(("name", "path", "test_case"), _COMPONENTS)
+def test_every_text_component_in_play_sent_another_way_is_network_traffic(
+    name: str, path: tuple[str | int, ...], test_case: str
+) -> None:
+    verdict = _compared(
+        name, _holding(name, path, nbt("hi")), _holding(name, path, nbt({"text": "hi"}))
+    )
+    assert verdict.gameplay == ()
+    assert [(d.path, d.test_case) for d in _traffic(verdict)] == [(_rendered(path), test_case)]
+
+
+@pytest.mark.parametrize(("name", "path", "test_case"), _COMPONENTS)
+def test_every_text_component_in_play_with_other_text_is_a_gameplay_divergence_at_its_text(
+    name: str, path: tuple[str | int, ...], test_case: str
+) -> None:
+    verdict = _compared(name, _holding(name, path, nbt("hi")), _holding(name, path, nbt("ho")))
+    assert _shown(verdict.gameplay) == [(f"{_rendered(path)}.text", "hi", "ho", test_case)]
