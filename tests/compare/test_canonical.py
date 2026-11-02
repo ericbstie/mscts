@@ -731,6 +731,38 @@ def test_a_colour_the_client_does_not_read_as_a_value_stays(unread: str) -> None
     ]
 
 
+def test_hover_text_is_read_as_a_text_component() -> None:
+    verdict = _compared(
+        "minecraft:disconnect",
+        _disconnect(nbt({"text": "a", "hover_event": {"action": "show_text", "value": "b"}})),
+        _disconnect(
+            nbt({"text": "a", "hover_event": {"action": "show_text", "value": {"text": "b"}}})
+        ),
+    )
+    assert verdict.gameplay == ()
+
+
+def test_hover_text_with_no_value_stays() -> None:
+    no_value = _disconnect(nbt({"text": "a", "hover_event": {"action": "show_text"}}))
+    no_text = _disconnect(nbt({"text": "a", "hover_event": {"value": "b"}}))
+    verdict = _compared("minecraft:disconnect", no_value, no_text)
+    assert [d.path for d in verdict.gameplay] == [
+        "reason.hover_event.action",
+        "reason.hover_event.value",
+    ]
+
+
+def test_another_hover_events_value_stays() -> None:
+    verdict = _compared(
+        "minecraft:disconnect",
+        _disconnect(nbt({"text": "a", "hover_event": {"action": "show_item", "value": "b"}})),
+        _disconnect(
+            nbt({"text": "a", "hover_event": {"action": "show_item", "value": {"text": "b"}}})
+        ),
+    )
+    assert [d.path for d in verdict.gameplay] == ["reason.hover_event.value"]
+
+
 def test_a_kick_reason_that_does_not_decode_is_compared_as_its_bytes() -> None:
     no_tag, kick = b"\x00", nbt("kick")
     verdict = _compared("minecraft:disconnect", _disconnect(kick), _disconnect(no_tag))
