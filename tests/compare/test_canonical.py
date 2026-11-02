@@ -668,6 +668,69 @@ def test_a_translation_argument_not_shown_to_be_its_text_stays(
     assert _shown(verdict.gameplay) == [("reason.with[0]", "5", shown, "play:disconnect.reason")]
 
 
+_COLOURS = {
+    "black": "#000000",
+    "dark_blue": "#0000AA",
+    "dark_green": "#00AA00",
+    "dark_aqua": "#00AAAA",
+    "dark_red": "#AA0000",
+    "dark_purple": "#AA00AA",
+    "gold": "#FFAA00",
+    "gray": "#AAAAAA",
+    "dark_gray": "#555555",
+    "blue": "#5555FF",
+    "green": "#55FF55",
+    "aqua": "#55FFFF",
+    "red": "#FF5555",
+    "light_purple": "#FF55FF",
+    "yellow": "#FFFF55",
+    "white": "#FFFFFF",
+}
+"""Each colour name the client reads, and its value (javap, `TextColor.<clinit>`)."""
+
+
+@pytest.mark.parametrize(
+    ("name", "spelled"),
+    [
+        *(pytest.param(name, value, id=name) for name, value in _COLOURS.items()),
+        pytest.param("white", "#ffffff", id="white-lower-case"),
+        pytest.param("dark_blue", "#AA", id="dark-blue-short"),
+        pytest.param("gold", "#+FFAA00", id="gold-plus-sign"),
+        pytest.param("black", "#-0", id="black-minus-zero"),
+    ],
+)
+def test_a_colour_name_is_the_same_as_its_value(name: str, spelled: str) -> None:
+    verdict = _compared(
+        "minecraft:disconnect",
+        _disconnect(nbt({"text": "a", "color": name})),
+        _disconnect(nbt({"text": "a", "color": spelled})),
+    )
+    assert verdict.gameplay == ()
+
+
+@pytest.mark.parametrize(
+    "unread",
+    [
+        pytest.param("Red", id="capitalised-name"),
+        pytest.param("#1000000", id="too-large"),
+        pytest.param("#-1", id="negative"),
+        pytest.param("#", id="no-digits"),
+        pytest.param("#0x0", id="python-prefix"),
+        pytest.param("#0_0", id="python-underscore"),
+        pytest.param("#" + chr(0xFF10), id="fullwidth-digit"),
+    ],
+)
+def test_a_colour_the_client_does_not_read_as_a_value_stays(unread: str) -> None:
+    verdict = _compared(
+        "minecraft:disconnect",
+        _disconnect(nbt({"text": "a", "color": "#000000"})),
+        _disconnect(nbt({"text": "a", "color": unread})),
+    )
+    assert _shown(verdict.gameplay) == [
+        ("reason.color", "#000000", unread, "play:disconnect.reason")
+    ]
+
+
 def test_a_kick_reason_that_does_not_decode_is_compared_as_its_bytes() -> None:
     no_tag, kick = b"\x00", nbt("kick")
     verdict = _compared("minecraft:disconnect", _disconnect(kick), _disconnect(no_tag))
