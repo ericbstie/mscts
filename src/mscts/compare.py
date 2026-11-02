@@ -2864,10 +2864,13 @@ def _read_object(component: dict[str, _Value]) -> dict[str, _Value]:
     - A style flag (`_STYLE_FLAGS`) that is a number is whether it is not 0: `Codec.BOOL`
       reads it with `NbtOps.getBooleanValue`, `doubleValue() != 0` (javap), so NaN is true
       and -0.0 false. A false flag stays: the style keeps it, unlike an absent one.
+    - Each translation argument in `with` is as `_read_argument` writes it.
     """
     result = dict(component)
     if isinstance(extra := result.get("extra"), list):
         result["extra"] = [_read_component(element) for element in extra]
+    if isinstance(arguments := result.get("with"), list):
+        result["with"] = [_read_argument(argument) for argument in arguments]
     if result.get("type") == "text" and isinstance(result.get("text"), str):
         del result["type"]
     for flag in _STYLE_FLAGS & result.keys():
@@ -2878,6 +2881,28 @@ def _read_object(component: dict[str, _Value]) -> dict[str, _Value]:
 
 _STYLE_FLAGS = frozenset({"bold", "italic", "underlined", "strikethrough", "obfuscated"})
 """The style's flags, each `Codec.BOOL` (javap, `Style$Serializer.MAP_CODEC`)."""
+
+
+def _read_argument(argument: _Value) -> _Value:
+    """A translation argument as the text it shows, where that text is known to be the same.
+
+    `TranslatableContents.ARG_CODEC` reads a number or a string as it is, and a component
+    collapsed to its text when it is plain text with no siblings and an empty style
+    (`Component.tryCollapseToString`); `getArgument` shows any argument but a component as
+    its `toString()` (javap). So an integer is its decimal text, and a component that reads
+    as `{"text": s}` alone (`_read_component`) is `s`. Any other component stays an object,
+    and a float stays a number: Java writes it its own way (`1.0E10`).
+    """
+    if type(argument) is int:
+        return str(argument)
+    if not isinstance(argument, dict | list):
+        return argument
+    component = _read_component(argument)
+    match component:
+        case {"text": str() as text} if len(component) == 1:
+            return text
+        case _:
+            return component
 
 
 def _unwrapped(value: _Value) -> _Value:
