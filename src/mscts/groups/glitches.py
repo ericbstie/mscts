@@ -1,5 +1,7 @@
 """Vanilla glitches: pistons that break bedrock, and duplicate TNT, rails and carpets.
 
+Pistons with no head break bedrock too, and cannot be pushed.
+
 Technical players use these on purpose, and some servers remove them on purpose (Paper turns
 them off by default: docs/research/2026-09-30-gameplay-survey.md). Each Group builds one
 machine a player would build, with `/setblock`, fires it, and compares what it does tick by tick.
@@ -18,6 +20,7 @@ built without updating the blocks beside them, so that no tick is scheduled on t
 
 import contextlib
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 
 from mscts.compare import Mask
 from mscts.group import GroupContext, GroupKind, group
@@ -260,3 +263,156 @@ async def rail_carpet_duplication(context: GroupContext) -> None:
     async with _machines(context, (*_RAIL_BUILD, *_CARPET_BUILD)):
         for z in (_RAIL_Z, _CARPET_Z):
             await stepped_window(context, _duplicating(z), _DUPLICATING_TICKS, _PACKETS)
+
+
+# `glitches/headless-pistons`: an extended piston with no head (Tutorial:Headless pistons,
+# revision 3853050). Every piston faces up, its base at y -58, the block in front at -57 and the
+# cell beyond at -56, over chunk (0, 0) and at most 15.3 blocks from the watcher at the spawn, so
+# that the watcher hears every piston sound (a sound reaches 16 blocks). Plain pistons are at z
+# 4 and 7, sticky ones at z 10 and 13, and the piston an explosion makes headless is at z 13.
+
+_HEADLESS_Y = -58
+"""The y of every headless piston's base."""
+
+_FRONTS = {4: "bedrock", 7: "end_portal_frame", 10: "stone"}
+"""The x of each plain headless piston at z 4 that Control updates, and the block in front of it."""
+
+
+def _put_strict(x: int, y: int, z: int, block: str) -> str:
+    """The `/setblock` of `block` at x, y, z that runs no `onPlace` and updates nothing."""
+    return f"{_put(x, y, z, block)} strict"
+
+
+def _headless(x: int, z: int, front: str, *, sticky: bool = False) -> tuple[str, ...]:
+    """A headless piston at x, z facing up, and `front` above it, both placed strictly.
+
+    A plain `/setblock` runs `PistonBaseBlock.onPlace`, which queues the retraction of an
+    unpowered extended piston at once (`SetBlockCommand.setBlock` places with flags 2 | 256, or
+    2 | 816 with `strict`; `LevelChunk.setBlockState` calls `onPlace` only without flag 512), and
+    updates the blocks beside it. So every block beside a headless piston is strict too.
+    """
+    piston = "sticky_piston" if sticky else "piston"
+    return (
+        _put_strict(x, _HEADLESS_Y, z, f"{piston}[facing=up,extended=true]"),
+        _put_strict(x, _HEADLESS_Y + 1, z, front),
+    )
+
+
+_HEADLESS_BUILD = (
+    *(command for x, front in _FRONTS.items() for command in _headless(x, 4, front)),
+    # Powered inside its window, from x 5.
+    *_headless(4, 7, "bedrock"),
+    # An ordinary piston at x 8 faces it, and Control powers that from x 9.
+    *_headless(7, 7, "stone"),
+    _put_strict(8, _HEADLESS_Y, 7, "piston[facing=west]"),
+    # Sticky, with air two ahead of the bedrock, and with stone two ahead.
+    *_headless(4, 10, "bedrock", sticky=True),
+    *_headless(7, 10, "bedrock", sticky=True),
+    _put_strict(7, _HEADLESS_Y + 2, 10, "stone"),
+    # Powered inside its window, from x 11.
+    *_headless(10, 10, "end_portal_frame", sticky=True),
+    # An ordinary piston at x 5 faces it, and Control powers that from x 6.
+    *_headless(4, 13, "stone", sticky=True),
+    _put_strict(5, _HEADLESS_Y, 13, "piston[facing=west]"),
+    # An ordinary piston in obsidian at x 8, with air for its head and for the TNT above it.
+    f"fill 7 {_HEADLESS_Y - 1} 12 9 {_HEADLESS_Y + 3} 14 minecraft:obsidian",
+    _put(8, _HEADLESS_Y, 13, "piston[facing=up]"),
+    _put(8, _HEADLESS_Y + 1, 13, "air"),
+    _put(8, _HEADLESS_Y + 2, 13, "air"),
+)
+"""Plain headless pistons at z 4 and 7, sticky ones at z 10 and 13, the ordinary pistons that
+face two of them, and a piston in a closed box of obsidian for the explosion. The box is closed
+so that the explosion (power 1) breaks the moving head and nothing else: every ray that leaves
+the head's cell and the TNT's ends in obsidian."""
+
+
+@dataclass(frozen=True)
+class _HeadlessWindow:
+    """One window: what Control does on which tick, how many ticks it steps, what it compares."""
+
+    schedule: tuple[At, ...]
+    ticks: int
+    packets: tuple[str, ...] = (
+        "minecraft:block_update",
+        "minecraft:section_blocks_update",
+        "minecraft:block_event",
+        "minecraft:level_event",
+        "minecraft:sound",
+    )
+
+
+def _updated(tick: int, x: int, z: int) -> At:
+    """On `tick`, update the piston at x, z: a stone set under it with a plain `/setblock`."""
+    return At(tick, _put(x, _HEADLESS_Y - 1, z, "stone"))
+
+
+def _powered(tick: int, x: int, z: int) -> At:
+    """On `tick`, a redstone block at x, z, in the row of the pistons."""
+    return At(tick, _put(x, _HEADLESS_Y, z, "redstone_block"))
+
+
+def _unpowered(tick: int, x: int, z: int) -> At:
+    """On `tick`, take away the redstone block at x, z."""
+    return At(tick, _put(x, _HEADLESS_Y, z, "air"))
+
+
+_UPDATING = tuple(_HeadlessWindow((_updated(0, x, 4),), 4) for x in _FRONTS)
+"""Update each plain headless piston: it retracts on tick 1 and removes the block in front,
+whatever it is (`PistonBaseBlock.triggerEvent`: `level.removeBlock`, with no check for a head),
+and lands on tick 3."""
+
+_POWERED = _HeadlessWindow((_powered(0, 5, 7), _updated(2, 4, 7), _unpowered(4, 5, 7)), 8)
+"""Power the headless piston and update it: nothing happens (`checkIfExtend`: a powered extended
+piston queues no event). The power goes on tick 4: it retracts on tick 5 and removes the
+bedrock, and lands on tick 7."""
+
+_PUSHED = _HeadlessWindow((_powered(0, 9, 7),), 3)
+"""Power the ordinary piston that faces the headless one: it does not extend, since an extended
+piston is never pushable (`PistonBaseBlock.isPushable`), so `resolve` fails and no block event
+is queued."""
+
+_STICKY = (
+    _HeadlessWindow((_updated(0, 4, 10),), 4),
+    _HeadlessWindow((_updated(0, 7, 10),), 4),
+    _HeadlessWindow((_powered(0, 11, 10), _updated(2, 10, 10), _unpowered(4, 11, 10)), 8),
+    _HeadlessWindow((_powered(0, 6, 13),), 3),
+)
+"""The same for the sticky headless pistons. With air two ahead of the bedrock, a sticky piston
+removes it as a plain one does. With stone two ahead it does not: `moveBlocks` fails, since
+`addBlockLine` stops at the bedrock in front, and `triggerEvent` then skips `removeBlock`. The
+Wiki says the stone replaces the bedrock; in 26.3 both stay."""
+
+_SUMMON_TNT = "summon minecraft:tnt 8.5 -56 13.5 {fuse:2s,NoGravity:1b,explosion_power:1.0f}"
+
+_EXPLODING = _HeadlessWindow(
+    (
+        At(0, _put(8, _HEADLESS_Y - 1, 13, "redstone_block")),
+        At(0, _SUMMON_TNT),
+        At(5, _put(8, _HEADLESS_Y + 1, 13, "bedrock")),
+        At(6, _put(8, _HEADLESS_Y - 1, 13, "obsidian")),
+    ),
+    10,
+    _PACKETS,
+)
+"""The Wiki's survival method: power the piston in obsidian and summon a TNT of power 1 above its
+head's cell, with a fuse of 2. The piston's block event runs on tick 1 and its head is a moving
+block until tick 3. The TNT explodes on tick 2, since entities tick after block events, and
+breaks the moving head, never the base (`MovingPistonBlock` has no `affectNeighborsAfterRemoval`),
+so the piston stays extended with no head. With a fuse of 4 the head has landed and the explosion
+breaks the base too. Bedrock is set in front on tick 5; the power goes on tick 6, and the piston
+retracts on tick 7, removing the bedrock. It lands on tick 9."""
+
+_HEADLESS_WINDOWS = (*_UPDATING, _POWERED, _PUSHED, *_STICKY, _EXPLODING)
+
+
+@group(
+    "glitches/headless-pistons",
+    kind=GroupKind.TICK_EXACT,
+    requires=_REQUIRES,
+    masks=(_PISTON_PITCH,),
+)
+async def headless_pistons(context: GroupContext) -> None:
+    """A piston with no head retracts on an update, removes what is in front, and is not pushed."""
+    async with _machines(context, _HEADLESS_BUILD):
+        for window in _HEADLESS_WINDOWS:
+            await stepped_window(context, window.schedule, window.ticks, window.packets)

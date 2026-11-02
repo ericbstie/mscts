@@ -47,6 +47,9 @@ SLOW_PLAY_LIMIT_S: Mapping[str, int] = {
     # 20 plays on the #64 branch: 93.0 s a play, 96.1 s under stress (the fact sheet's probe, load
     # average 0.6 to 1.9: 122 steps), twice that.
     "weather/commands": 190,
+    # 108 s a play on main 4fc8ee3 plus the Group (20 plays: 2166.2 s; load average 0.4 after, 3.2
+    # when it queued) and 111 s under `--stress` (2222.7 s; load average 4.2), twice the quiet one.
+    "glitches/headless-pistons": 220,
 }
 """Seconds a play may take, for the Groups that need more than `PLAY_LIMIT_S`. A Group goes in
 with its play time measured on main (`mise run test:selfcheck` with `--durations`) and the load

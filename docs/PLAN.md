@@ -1350,7 +1350,9 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   turned in the tick before it retracts, which breaks bedrock and an end portal frame;
   `tnt_duplication` — the `glitches/tnt-duplication` script, a coral-fan TNT duplicator;
   `rail_carpet_duplication` — the `glitches/rail-carpet-duplication` script, a rail and a
-  carpet duplicator by the same coral-fan update.
+  carpet duplicator by the same coral-fan update; `headless_pistons` — the
+  `glitches/headless-pistons` script, pistons left extended with no head, which retract on an
+  update and remove the block in front.
 - `groups.redstone`: `repeater` — the `redstone/repeater` script; `comparator` — the
   `redstone/comparator` script; `torch` — the `redstone/torch` script; `observer` — the
   `redstone/observer` script; `dust` — the `redstone/dust` script; `update_order` — the

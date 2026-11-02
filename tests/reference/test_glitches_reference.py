@@ -2,7 +2,8 @@
 
 A Self-check shows that two vanilla Instances do the same; this shows that what they do is the
 glitch: bedrock and an end portal frame gone, a TNT primed and its block moved on, a rail and a
-carpet dropped as items and their blocks moved on. Each glitch Group is played once on a
+carpet dropped as items and their blocks moved on, bedrock, an end portal frame and a stone
+removed by pistons with no head (#533). Each glitch Group is played once on a
 Reference of the test's own, since the Groups change game rules and the world, and the test
 reads what the watcher was sent in the windows.
 """
@@ -122,8 +123,8 @@ async def _play(instance: Instance, group_id: str) -> Transcript:
     return await run_group(GROUPS[group_id], instance.endpoint, server="vanilla")
 
 
-# Its own boot and stop, and three plays of about 20 s each.
-@pytest.mark.timeout(300)
+# Its own boot and stop, and four plays of 20 to 35 s each.
+@pytest.mark.timeout(360)
 @pytest.mark.asyncio
 async def test_the_glitch_machines_break_bedrock_and_duplicate_tnt_rails_and_carpets(
     boot_reference: Callable[..., AbstractAsyncContextManager[Instance]],
@@ -132,6 +133,7 @@ async def test_the_glitch_machines_break_bedrock_and_duplicate_tnt_rails_and_car
         bedrock = await _play(reference, "glitches/bedrock-breaking")
         tnt = await _play(reference, "glitches/tnt-duplication")
         rail_carpet = await _play(reference, "glitches/rail-carpet-duplication")
+        headless = await _play(reference, "glitches/headless-pistons")
 
     broken = _blocks(bedrock)
     assert (broken[12, -53, 12], broken[12, -53, 4]) == (_AIR, _AIR)
@@ -143,3 +145,12 @@ async def test_the_glitch_machines_break_bedrock_and_duplicate_tnt_rails_and_car
     assert _dropped(rail_carpet) == {"minecraft:rail", "minecraft:white_carpet"}
     landed = _blocks(rail_carpet)
     assert (landed[7, -44, 22], landed[6, -44, 27]) == (_RAIL, _CARPET)
+    # A piston with no head retracts on an update and removes what is in front of it: the
+    # bedrock, the end portal frame and the stone. A sticky one with stone two ahead of the
+    # bedrock removes nothing, and neither does an ordinary piston that faces a headless one.
+    removed = _blocks(headless)
+    for position in [(4, -57, 4), (7, -57, 4), (10, -57, 4), (4, -57, 7), (4, -57, 10)]:
+        assert removed[position] == _AIR, position
+    assert (removed[10, -57, 10], removed[8, -57, 13]) == (_AIR, _AIR)
+    assert (7, -57, 10) not in removed
+    assert (7, -57, 7) not in removed
