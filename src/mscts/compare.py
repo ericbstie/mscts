@@ -36,12 +36,13 @@ from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Seq
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, replace
 from enum import Enum, StrEnum
-from functools import cache
+from functools import cache, partial
 from itertools import groupby
 from types import MappingProxyType
 from typing import Literal, NamedTuple, NoReturn, Self, cast, override
 from uuid import UUID
 
+from mscts.codec import nbt
 from mscts.codec.entity_ids import EACH, Each, EntityIdPath, Step, Variant
 from mscts.codec.packets import Codec, Direction, Packet, State
 from mscts.codec.registry_names import registry_names
@@ -685,9 +686,11 @@ def test_case(state: State, packet: str, path: str | None) -> str:
     of None, for a packet compared as a whole (by payload, missing or unexpected), gives
     the packet name alone. The status response's only field, `json_response`, is JSON
     text (`_JSON_TEXT`), so its paths are named from inside the JSON:
-    `status_response.description`, and `status_response` for the text as a whole. A
-    packet name that the Target's clientbound packets (`packets.json`) have in more than
-    one State starts with the State: `play:keep_alive.id`, `configuration:keep_alive`.
+    `status_response.description`, and `status_response` for the text as a whole. A text
+    component (`_TEXT_COMPONENTS`) is one test case, its field's, whatever path in it
+    differs: `play:disconnect.reason` for `reason.translate`. A packet name that the
+    Target's clientbound packets (`packets.json`) have in more than one State starts with
+    the State: `play:keep_alive.id`, `configuration:keep_alive`.
 
     Raises:
         ValueError: `path` is malformed, or not spelled as a Divergence path would be.
@@ -700,6 +703,8 @@ def _test_case(state: State, packet: str, path: _Path) -> str:
     json_text = _JSON_TEXT.get((state, packet))
     if json_text is not None and path[:1] == (json_text,):
         path = path[1:]
+    if (components := _TEXT_COMPONENTS.get((state, packet))) is not None:
+        path = _component_root(components, path)
     name = packet.removeprefix(_MINECRAFT)
     if _in_more_than_one_state(packet):
         name = f"{state}:{name}"
@@ -2130,6 +2135,8 @@ def _normalize(packet: Packet, masks: _Masks, numbers: _Numbers, context: _Conte
     parsed = _copy(packet, packet.fields)
     if (json_text := _JSON_TEXT.get((packet.state, packet.name))) is not None:
         parsed = _parsed(parsed, json_text)
+    elif (components := _TEXT_COMPONENTS.get((packet.state, packet.name))) is not None:
+        parsed = _decoded(parsed, components)
     unmasked = canonical(_copy(packet, packet.fields), context)
     fields = canonical(_copy(packet, packet.fields), context)
     for copy in (raw, parsed, unmasked, fields):
@@ -2744,6 +2751,107 @@ def _nesting(value: object) -> int:
         deepest = max(deepest, depth)
         pending.extend((child, depth + 1) for child in children)
     return deepest
+
+
+# Text components in play (#335): the codec keeps each as its NBT bytes; the Comparison decodes
+# them (`nbt.decode`) and compares each as the component the client reads it into
+# (docs/research/2026-09-26-comparison.md, Text components in NBT). A component that does not
+# decode is compared as its bytes.
+
+
+def _decoded(fields: dict[str, _Value], components: _Trie) -> dict[str, _Value]:
+    """`fields` with each text component at the ends of `components` decoded, as it came."""
+    _replaced(fields, components, _decoded_component)
+    return fields
+
+
+def _decoded_component(value: _Value) -> _Value:
+    """`value`, a text component's NBT bytes, decoded into the value model, as it came.
+
+    It stays as it is unless it is bytes that decode to a tag (not TAG_End). A number is its
+    int or float, and an array a list of ints; a value deeper than 255 levels is cut, as
+    `_plain` cuts a field's.
+    """
+    if not isinstance(value, bytes):
+        return value
+    try:
+        decoded = nbt.decode(value)
+    except WireError:
+        return value
+    if decoded is None:
+        return value
+    return _plain(_from_nbt(decoded), "text component", ())
+
+
+def _from_nbt(value: nbt.Value) -> object:
+    """`value` with each `Numeric` as its number and each `Array` as a list. Iterative.
+
+    A decoded tag nests up to 512 levels, deeper than a recursive walk may go.
+    """
+    root: list[object] = [None]
+    pending: list[tuple[nbt.Value, list[object] | dict[str, object], int | str]] = [
+        (value, root, 0)
+    ]
+    while pending:
+        node, parent, key = pending.pop()
+        copy: object
+        if isinstance(node, dict):
+            mapping = cast("dict[str, object]", dict.fromkeys(node))
+            pending.extend((item, mapping, name) for name, item in node.items())
+            copy = mapping
+        elif isinstance(node, list):
+            items: list[object] = [None] * len(node)
+            pending.extend((item, items, index) for index, item in enumerate(node))
+            copy = items
+        elif isinstance(node, nbt.Numeric):
+            copy = node.value
+        elif isinstance(node, nbt.Array):
+            copy = list(node.values)
+        else:
+            copy = node
+        if isinstance(parent, list):
+            parent[cast("int", key)] = copy
+        else:
+            parent[cast("str", key)] = copy
+    return root[0]
+
+
+def _canonical_text_components(
+    components: _Trie,
+) -> Callable[[dict[str, _Value], _Context], dict[str, _Value]]:
+    """The canonical form of a packet whose text components are at the ends of `components`.
+
+    Each one decoded (`_decoded_component`) is written as the object the client reads it as
+    (`_text_component`); one that does not decode stays its bytes. The rest is as it came.
+    """
+
+    def canonical(fields: dict[str, _Value], _context: _Context) -> dict[str, _Value]:
+        _replaced(fields, components, _canonical_component)
+        return fields
+
+    return canonical
+
+
+def _canonical_component(value: _Value) -> _Value:
+    decoded = _decoded_component(value)
+    return decoded if isinstance(decoded, bytes) else _text_component(decoded)
+
+
+def _component_root(components: _Trie, path: _Path) -> _Path:
+    """The part of `path` that leads to the text component it is in, or `path` if none.
+
+    A component is one test case, named by its field (`play:disconnect.reason`), and a
+    difference inside it is network traffic only if the whole component reads the same
+    (`_COVERS`).
+    """
+    node = components
+    for depth, step in enumerate(path):
+        if node.here:
+            return path[:depth]
+        node = next((rest for key, rest in node.steps if _step_fits(step, key)), None)
+        if node is None:
+            return path
+    return path
 
 
 # Chunks (#22): a chunk's blocks and biomes as the vanilla client keeps them, whatever palette
@@ -3389,10 +3497,18 @@ def _light_text(value: _Value | Absent) -> str:
     return "no such light section" if value is ABSENT else "not sent"
 
 
+_TEXT_COMPONENTS: Mapping[tuple[State, str], _Trie] = MappingProxyType(
+    {(State.PLAY, "minecraft:disconnect"): _Trie.of([("reason",)])}
+)
+"""Where each clientbound packet that has text components holds them: `ComponentSerialization`'s
+stream codecs, NBT the codec keeps as bytes (`TEXT_COMPONENT`, or `NBT` where a schema says a
+text component)."""
+
 _CANONICAL: Mapping[
     tuple[State, str], Callable[[dict[str, _Value], _Context], dict[str, _Value]]
 ] = MappingProxyType(
     {
+        **{key: _canonical_text_components(trie) for key, trie in _TEXT_COMPONENTS.items()},
         (State.STATUS, "minecraft:status_response"): _canonical_status_response,
         (State.CONFIGURATION, _REGISTRY_DATA): _canonical_registry_data,
         (State.PLAY, "minecraft:level_chunk_with_light"): _canonical_level_chunk,
@@ -3429,6 +3545,7 @@ same either way: every copy of its fields in one of them, so neither is a Diverg
 
 _COVERS: Mapping[tuple[State, str], Callable[[_Path], _Path]] = MappingProxyType(
     {
+        **{key: partial(_component_root, trie) for key, trie in _TEXT_COMPONENTS.items()},
         (State.PLAY, "minecraft:level_chunk_with_light"): _chunk_cover,
         (State.PLAY, "minecraft:light_update"): _chunk_cover,
     }
