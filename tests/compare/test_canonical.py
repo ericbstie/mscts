@@ -6,11 +6,15 @@ equal is still reported, as network traffic (test_observability.py).
 Status packets are built through the Target's real Codec.
 """
 
+from collections.abc import Iterable
+
 import pytest
 from support.compared import PUMPKIN_NIGHTLY, VANILLA, status
+from support.play import CLIENTBOUND
+from support.text_nbt import nbt
 
-from mscts.codec.packets import Codec, Packet
-from mscts.compare import ABSENT, Mask, compare
+from mscts.codec.packets import Codec, Packet, State
+from mscts.compare import ABSENT, Divergence, Mask, Observability, Verdict, compare
 from tests.compare.build import divergence, packet, transcript
 
 CODEC = Codec.load("26.3")
@@ -439,3 +443,95 @@ def test_canonicalization_leaves_the_transcript_untouched() -> None:
     reference = transcript(("alice", status(VANILLA)))
     compare(reference, transcript(("alice", status(PUMPKIN_STYLE))), [])
     assert reference.events[0].packet.fields == {"json_response": VANILLA}
+
+
+# Text components in play (#335): each is NBT, decoded and compared as the component the client
+# reads it into (docs/research/2026-09-26-comparison.md, Text components in NBT).
+
+
+def _disconnect(reason: bytes) -> Packet:
+    data = CODEC.encode(State.PLAY, CLIENTBOUND, "minecraft:disconnect", {"reason": reason})
+    return CODEC.decode(State.PLAY, CLIENTBOUND, data)
+
+
+def _compared(name: str, reference: Packet, candidate: Packet) -> Verdict:
+    verdict = compare(transcript(("alice", reference)), transcript(("alice", candidate)), [])
+    assert {(d.index, d.kind, d.packet) for d in verdict.divergences} <= {(0, "field", name)}
+    return verdict
+
+
+def _shown(divergences: Iterable[Divergence]) -> list[tuple[str | None, object, object, str]]:
+    return [(d.path, d.reference, d.candidate, d.test_case) for d in divergences]
+
+
+def _traffic(verdict: Verdict) -> tuple[Divergence, ...]:
+    return tuple(d for d in verdict.divergences if d.observability is Observability.NETWORK_TRAFFIC)
+
+
+def test_the_same_kick_reason_in_two_encodings_is_no_gameplay_divergence() -> None:
+    verdict = _compared(
+        "minecraft:disconnect", _disconnect(nbt("kick")), _disconnect(nbt({"text": "kick"}))
+    )
+    assert verdict.gameplay == ()
+    assert _shown(_traffic(verdict)) == [
+        ("reason", "kick", {"text": "kick"}, "play:disconnect.reason")
+    ]
+
+
+def test_a_kick_reason_with_another_translation_key_is_a_gameplay_divergence_at_the_key() -> None:
+    verdict = _compared(
+        "minecraft:disconnect",
+        _disconnect(nbt({"translate": "multiplayer.disconnect.flying"})),
+        _disconnect(nbt({"translate": "multiplayer.disconnect.invalid_player_movement"})),
+    )
+    assert _shown(verdict.gameplay) == [
+        (
+            "reason.translate",
+            "multiplayer.disconnect.flying",
+            "multiplayer.disconnect.invalid_player_movement",
+            "play:disconnect.reason",
+        )
+    ]
+    assert _traffic(verdict) == ()
+
+
+def test_a_kick_reason_with_its_keys_in_another_order_is_network_traffic() -> None:
+    verdict = _compared(
+        "minecraft:disconnect",
+        _disconnect(nbt({"translate": "k", "color": "red"})),
+        _disconnect(nbt({"color": "red", "translate": "k"})),
+    )
+    assert verdict.gameplay == ()
+    assert [(d.path, d.test_case) for d in _traffic(verdict)] == [
+        ("reason", "play:disconnect.reason")
+    ]
+
+
+def test_a_kick_reason_as_a_list_is_its_first_component_with_the_rest_in_its_extra() -> None:
+    verdict = _compared(
+        "minecraft:disconnect",
+        _disconnect(nbt(["a", "b"])),
+        _disconnect(nbt({"text": "a", "extra": ["b"]})),
+    )
+    assert verdict.gameplay == ()
+    assert [d.path for d in _traffic(verdict)] == ["reason"]
+
+
+def test_a_difference_inside_a_component_that_reads_differently_is_gameplay_alone() -> None:
+    # The raw difference is at reason[0].bold, where the canonical forms hold nothing: it is
+    # network traffic only if the whole component reads the same (_COVERS).
+    verdict = _compared(
+        "minecraft:disconnect",
+        _disconnect(nbt([{"text": "a"}, {"text": "b"}])),
+        _disconnect(nbt([{"text": "a", "bold": "x"}, {"text": "b"}])),
+    )
+    assert _shown(verdict.gameplay) == [("reason.bold", ABSENT, "x", "play:disconnect.reason")]
+    assert _traffic(verdict) == ()
+
+
+def test_a_kick_reason_that_does_not_decode_is_compared_as_its_bytes() -> None:
+    no_tag, kick = b"\x00", nbt("kick")
+    verdict = _compared("minecraft:disconnect", _disconnect(kick), _disconnect(no_tag))
+    assert _shown(verdict.gameplay) == [
+        ("reason", {"text": "kick"}, no_tag, "play:disconnect.reason")
+    ]
