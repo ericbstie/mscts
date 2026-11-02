@@ -234,7 +234,7 @@ class Tagged:                      # WireType[dict[str, object]]: a VarInt that 
     # `variants` pairs each name with its wire type, so a walk of the fields can reach inside;
     # `tag_key` and `value_key` are the two keys.
 NBT: WireType[bytes]               # one network NBT tag, as its exact bytes, checked structurally
-                                   # (tag types, lengths, 512 deep); not decoded into values yet
+                                   # (tag types, lengths, 512 deep); `codec/nbt.py` decodes it
 POSITION: WireType[dict[str, int]] # {x, y, z} packed 26/26/12 bits into a Long
 LP_VEC3: WireType[dict[str, int]]  # {scale, x, y, z}: an entity's velocity, as vanilla's LpVec3 packs it:
                                    # a scale and three 15-bit quanta, kept as the integers (not the
@@ -338,7 +338,8 @@ def decode(data: bytes) -> Value  # exactly one root tag, every byte read
 UNIT: WireType[None]             # no bytes (StreamCodec.unit): reads None, writes only None
 NBT_TAG: WireType[bytes]         # an NBT root tag of any type but END, as its exact bytes
 COMPOUND_TAG: WireType[bytes]    # NBT_TAG whose root must be a compound (type 10), as its exact bytes
-TEXT_COMPONENT: WireType[bytes]  # NBT_TAG: a text component is kept as its NBT bytes, not decoded
+TEXT_COMPONENT: WireType[bytes]  # NBT_TAG: a text component, kept as its NBT bytes; the Comparison
+                                 # decodes the ones in play (Comparison semantics)
 @frozen
 class FixedArray:                # exactly `size` elements, no count (fixedSizeList): a list
     element: WireType[object]; size: int
@@ -2489,6 +2490,30 @@ proves it necessary:
      no default, so their absence is significant; `players.max`,
      `players.online`, `version.name` and `version.protocol` are
      required (`fieldOf`).
+   - `play` text components (#335): `disconnect.reason`,
+     `system_chat.content`, `disguised_chat.message`, `player_chat.
+     unsigned_content`, the `sender_name` and `target_name` of both
+     chats, `player_combat_kill.message`, `open_screen.window_title`,
+     `update_advancements.advancements[].display.title` and
+     `.description`, and `player_info_update.players[].display_name`.
+     The codec keeps each as its NBT bytes; the Comparison decodes it
+     (`codec/nbt.py`) and writes it as the component the client reads:
+     a string is `{"text": s}`, a list its first component with the
+     rest added to its `extra`, a list element `{"": tag}` is that tag,
+     `"type": "text"` is dropped when `text` is a string, a style flag
+     that is a number is whether it is not 0, an integer translation
+     argument is its decimal text and one that reads as `{"text": s}`
+     alone is `s`, a colour the client reads is `#RRGGBB`, and a
+     `show_text` hover's value is a text component read the same way.
+     The raw diff is taken on the decoded value, so a difference in
+     network traffic is reported at its path inside the component; it
+     is network traffic only if the whole component reads the same
+     (`_COVERS`), and the component is one test case, named by its
+     field. One that does not decode stays its bytes. Evidence, with
+     `javap` on the 26.3 client jar: docs/research/2026-09-26-
+     comparison.md, *Text components in NBT*. A trim pattern's
+     `description` (in a `smithing_trim` slot display) is not decoded:
+     slot displays nest to any depth, which a fixed path does not reach.
    - `play` / `minecraft:level_chunk_with_light` (#22): `heightmaps`
      become the ones the client keeps, the last sent of each type it
      reads (an unknown id as 0), by type: it puts them into an `EnumMap`,
@@ -3471,6 +3496,9 @@ then record the answer in an ADR:
   canonical in a text component? Likewise the text components nested in
   `with`, `separator` and hover events, which are not canonicalized yet.
   **Decided (#342):** the list form is canonical (Comparison semantics).
+  **Decided (#335):** in play, `"type": "text"`, `with` arguments and
+  `show_text` hover text are canonical too; `separator` is not
+  (Comparison semantics).
 - Alignment matches on (State, name) only, so two same-named packets in a
   different order are matched pairwise and report `field` Divergences,
   not a move. A content-aware alignment (e.g. matching on masked field

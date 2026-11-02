@@ -34,6 +34,11 @@ lighting, #35 block commands (running), #43 summon, #44 tracking range,
 
 Newest first: one line per lesson, with the issue it came from.
 
+- #335: a canonical form that decodes bytes (a text component's NBT) also decodes the parsed copy, so a network traffic difference shows at its path inside the value. When the canonical value is shaped otherwise (the list form against `extra`), add the field to `_COVERS`: a raw difference inside it is network traffic only if the whole value reads the same, and its test case is the field's (`_component_root`).
+- #335: `NbtOps.getBooleanValue` is `doubleValue() != 0`, not DFU's default `byteValue() != 0`: javap the ops a codec reads with before writing a rule for a primitive, since 256 reads differently under the two.
+- #335: `Nested` is a `str`, so a rule that takes any string (a text component's `text`) takes a value cut at 255 levels too. That is harmless only because a `Nested` never equals what a server sent.
+- #335: in a Bash argument, `"Foo$Bar"` expands `$Bar` to nothing: put javap class names with `$` in single quotes or in a file.
+
 - #462: key a number the Comparison gives on what the client can see (a recipe's shown entry), not on the server's id, and write the id as whatever the client holds there. Keyed on the id, ending numbers when the id went away made the server's history outside the windows decide what a recipe read as. A recipe got outside the windows is named by its `_shown_entry` minus flags and display id, as `_Numbers.spawned` names an entity.
 - #462: a recipe group is written as the names and numbers of the recipes the book holds in it, because the client keys a button by (category, group) and the number itself is never shown.
 - #462: a login ends every recipe name and number (`handleLogin` makes a `new ClientRecipeBook`); a respawn and a replacing add do not. Run review C's transient fuzz on a change to recipe naming: the third review found a recipe first seen outside the windows staying a name for good, which the pinned cases did not show.

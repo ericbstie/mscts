@@ -126,7 +126,9 @@ were absent.
 
 mscts calls a difference network traffic only when a hand-written rule
 says both formats mean the same thing. Each rule comes from reading vanilla's
-own decoding code. Today these rules cover the server list response, chunks, light updates,
+own decoding code. Today these rules cover the server list response, the text
+of chat, kick and death messages, window titles, advancements and player names
+in the tab list, chunks, light updates,
 chunk batch markers, the order the registries are sent in, a registry or
 entry name written without its `minecraft:` namespace, registries the client
 never loads, and the state numbers of inventory contents. Every
