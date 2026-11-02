@@ -1245,7 +1245,9 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   enchantment and the kinds of damage it meets); `ARMORS` — the six sets;
   `wear_commands` — the commands that put a set on a victim; `armor` — the `combat/armor` script;
   `Effect` — a status effect, its amplifier and the kinds of damage it meets; `EFFECTS` — the five the Group gives; `effect_command` — the
-  command that gives one to a victim; `effects` — the `combat/effects` script;
+  command that gives one to a victim, for a time and with its particles hidden or shown;
+  `quiet_arena` — the join pinned, natural healing off and Control moved away, undone on exit;
+  `effects` — the `combat/effects` script;
   `Death` — a lethal source and the `show_death_messages` rule it is played with; `DEATHS` — the four
   the Group plays; `death` — the `combat/death` script.
 - `groups.player`: `PACKETS` — what a window compares (the damage, the health, the entity data, sounds, `player_position`, the death and the respawn); `clock` — the clock that times the gap between a hit and the next window; `HIT_PACKETS` — what a window compares for a hit after the first; `FREEZING_PACKETS` — what a window compares for freezing (the hits and `player_position`); `FIRE_MASKS` — the Mask on the sounds' pitch; `fall`, `drowning`, `suffocation`, `void`, `fire` and `freezing` — the `player/fall`, `player/drowning`, `player/suffocation`, `player/void`, `player/fire` and `player/freezing` scripts.
@@ -1266,6 +1268,10 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   reads its food back; `regeneration`, `starvation`, `eating` and `exhaustion` — the
   `player/regeneration`, `player/starvation`, `player/eating` and `player/exhaustion`
   scripts.
+- `groups.player_effects`: `PACKETS` — what a window compares (the effects given and taken, the
+  attributes, the entity data and the health); `effect_attributes`, `effect_ticking`,
+  `effect_instant` and `effect_visibility` — the `player/effect-attributes`,
+  `player/effect-ticking`, `player/effect-instant` and `player/effect-visibility` scripts.
 - `groups.inventory`: `DROP_MASKS` — the Masks on how an item a player drops moves and faces;
   `PICKUP_PITCH` — the Mask on the pitch of the pickup sound `/give` plays; `GIVE_PACKETS` —
   what a give window compares; `GIVES` — the items and counts given, one window each; `give` —

@@ -634,6 +634,62 @@ nothing, and the readback carries the comparison. The windows compare only `set_
 `sound` or `entity_event`: a hit's sound and effects follow the attack charge, which grows in
 real time, so the same hit can differ from one play to the next.
 
+### Potion effects (`player_effects`)
+
+What a status effect sends a player when it is given, while it lasts and when it ends. A frozen
+world does not freeze a player, so a Bot's effects run in real time and stepping the world does
+not move them. Each window gives the effect, waits for the packet that ends it and closes at the
+barrier. What is compared is which packets the effect sends and in what order, not the tick each
+one comes on. How many times an effect hurts or heals, and the health each hit leaves, still show
+its rhythm.
+
+Every part plays on normal difficulty with natural regeneration off, and clears the Bot's
+effects when it ends.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `player/effect-attributes` | exact | none | A Bot is given Speed I and II, Slowness, Strength, Haste and Jump Boost for 1 second, first with the particles hidden and then shown, in a window of its own each. | none |
+| `player/effect-ticking` | exact | none | A Bot at 6 health is given Regeneration I and II, Poison I and II and Wither I for 5 seconds with the particles hidden, in a window of its own each. | none |
+| `player/effect-instant` | tick-exact | none | A Bot at 10 health is given Instant Health I and II and Instant Damage I, then a zombie that stands still is given them, with the particles hidden and shown, in a window of its own each. | none |
+| `player/effect-visibility` | exact | none | A second Bot is given Invisibility and Glowing, with the particles hidden and shown, while the first Bot stands beside it. Each effect is given in one window and cleared with `/effect clear` in another. | none |
+
+In `player/effect-attributes` each window holds the effect given, the attribute modifier it
+adds, the particle or ambience entity data, and the effect ending. Vanilla sends no attributes
+for Strength. A hidden effect's attributes come back 2 ticks after it ends, later than any other
+packet of the window, so the window waits for one more barrier after the end.
+
+In `player/effect-ticking` each effect starts from a fresh Bot, killed and respawned, that
+`/damage` of type `generic` takes to 6 health. The respawned player ignores damage until the
+server has read that it loaded the world, so the Bot waits for that first. The Bot then waits for
+two `set_time`, which vanilla sends every 20 ticks, frozen or not, so that the 10 ticks of
+immunity the hit gives are over. Regeneration I heals at ticks 1 and 51, Regeneration II at 1, 26,
+51 and 76, Poison I at 1, 26, 51 and 76, Poison II at 5, 17, 29, 41 and 53 and Wither I at 21
+and 61. Poison never takes the last half heart, so Poison II stops at 1 health. A Candidate that
+heals at another rate sends another number of hits, and another set of health values.
+
+`player/effect-instant` has two parts. The Bot is hurt to 10 health as in `player/effect-ticking`
+and given the effect for 1 tick, which is what `/effect give` makes of an instant effect's 1. Vanilla
+sends the effect, then in the next tick the entity data, the damage and the end of the effect,
+and the health. Each window ends on that health, because a server may apply an instant effect
+inside the command and never send a `remove_mob_effect`. Instant Health I takes the Bot to 14, II
+to 18, and Instant Damage I to 4.
+
+The zombie is the part of this section that a frozen world freezes, so the Group steps it: two
+ticks a window, then ten for the zombie's immunity before the next. It stands still with a pumpkin
+on its head, so that daylight does not burn it. Undead take the effects the other way round,
+Instant Health hurts and Instant Damage heals, so the Group compares a `damage_event` for the
+first and none for the other two. The Bot is told of the zombie before the first window, and the
+zombie is summoned after the Bot's last respawn, because after a respawn vanilla was once seen
+never to send the Bot the zombie. A Candidate whose `/effect` gives to players only leaves
+the zombie's windows empty.
+
+In `player/effect-visibility` the effect lasts the most `/effect give` takes, so that it outlasts
+its window. Vanilla sends the effect to the Bot that has it and to no one else. In the next tick it
+sends both Bots the same entity data, the shared flags (32 for invisible, 64 for glowing) and the
+particles or ambience. `/effect clear` sends the removal at once and sets the flags to 0 a tick
+later. Before the first window the first Bot passes up to four barriers until it is told of the
+second, so that the Group does not start before the two see each other.
+
 ## Inventory (`inventory`)
 
 What a survival player sees when it is given items, clicks them about, drops them and swaps them between its hands. Each Group joins one Bot at the world spawn, looking down, with an empty inventory. `inventory/offhand` also joins a second Bot a few blocks away. Control freezes the world, so an item on the ground stays where it fell and counts down its pickup delay only on the ticks a Group steps. When a Group ends, Control removes the items it made and empties the Bot's inventory. Items that lay there before are tagged first and left alone.

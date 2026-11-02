@@ -690,6 +690,10 @@ TITLES: Mapping[str, str] = MappingProxyType(
         "explode.play_sound": "Explosion sound played",
         "explode.player_knockback": "Explosion knockback",
         "explode.radius": "Explosion radius",
+        # potion effects (#58)
+        "set_entity_data.entries[].value[].options.color": "Effect particle color",
+        "set_entity_data.entries[].value[].type": "Effect particle",
+        "update_attributes.attributes[].modifiers[]": "Entity attribute modifier",
     }
 )
 """Known test case name → the short title checked against the docs reference."""
