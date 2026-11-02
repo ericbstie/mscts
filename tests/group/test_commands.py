@@ -170,6 +170,44 @@ SUCCESS_UNDO = (
 )
 """What Control runs after the last window, in order: the last undo pushed first."""
 
+ERRORS = (
+    Want("setblock 4 -60 4 minecraft:not_a_block", answers=2),
+    Want("setblock 4 -60", answers=2),
+    Want("notacommand", answers=2),
+    Want("setblock 4 400 4 minecraft:stone"),
+    Want("setblock 4 -60 4 minecraft:stone", setup=("setblock 4 -60 4 minecraft:stone",)),
+    Want("fill 0 -60 0 100 -50 100 minecraft:stone"),
+    Want("clone 4 -60 6 6 -58 8 5 -60 6"),
+    Want("kill @e[tag=nothing]"),
+    Want("tp @s @e[tag=nothing]", answers=2),
+    Want("give @s minecraft:diamond 0", answers=2),
+    Want("give @s minecraft:not_an_item", answers=2),
+    Want("clear @s minecraft:diamond"),
+    Want("effect give @s minecraft:not_an_effect", answers=2),
+    Want("effect clear @s minecraft:speed"),
+    Want("enchant @s minecraft:sharpness"),
+    Want("xp add @s abc", answers=2),
+    Want("gamemode nonsense", answers=2),
+    Want("gamemode survival", answers=0, marker=True),
+    Want("difficulty normal"),
+    Want("time set abc"),
+    Want("weather rain abc", answers=2),
+    Want("gamerule not_a_rule true", answers=2),
+    Want("gamerule keep_inventory maybe", answers=2),
+    Want("tick rate 0", answers=2),
+    Want("seed extra", answers=2),
+    Want("list nonsense", answers=2),
+    Want("summon minecraft:not_an_entity", answers=2),
+    Want("say", answers=2),
+)
+"""`summon minecraft:pig 12.5 400 12.5` is left out: vanilla summons it, with a random UUID."""
+
+ERRORS_UNDO = (
+    "kill @e[type=minecraft:item]",
+    "kill @e[type=minecraft:pig,tag=mscts]",
+    AREA_CLEAR,
+)
+
 
 @dataclass(frozen=True)
 class Plan:
@@ -185,6 +223,7 @@ PLANS = {
     "commands/success": Plan(
         commands.COMMANDER, (commands.COMMANDER, commands.WITNESS), SUCCESS, SUCCESS_UNDO
     ),
+    "commands/errors": Plan(commands.COMMANDER, (commands.COMMANDER,), ERRORS, ERRORS_UNDO),
 }
 GROUP_IDS = tuple(PLANS)
 PLACES = {commands.COMMANDER: "0.5 -60 14.5", commands.WITNESS: "-3.5 -60 14.5"}

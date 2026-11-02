@@ -57,11 +57,13 @@ class _Case:
     Attributes:
         command: What the first Bot runs.
         setup: What Control runs before the window opens.
-        answers: How many chat packets vanilla sends for `command` and `then`.
+        answers: How many chat packets vanilla sends for `command` and `then`, one for a success
+            or an execution error, two for a parse error.
         effects: The packets besides the chat that the window compares: what the command sends
             inside itself, on the same tick or the first after it.
         signed: Whether the Bot sends `command` as the vanilla client sends a message command.
-        marker: Whether vanilla says nothing, so that the window ends with the marker.
+        marker: Whether the window ends with the marker, where vanilla sends no chat (`answers`
+            0) or its feedback is off.
         then: What the Bot sends right after `command`, without waiting.
     """
 
@@ -174,15 +176,14 @@ async def _run(bot: Bot, case: _Case) -> None:
 
 
 async def _wait_for_answer(bot: Bot, case: _Case, opened: int) -> None:
-    """Wait for the chat packets vanilla sends for the case, or, where it sends none, a marker.
+    """Wait for the chat packets vanilla sends for the case, then for a marker if it has one.
 
     Only a packet that arrived at the window's open Mark (`opened`) or later counts.
     """
-    if case.marker:
-        await _wait_for_marker(bot, opened)
-        return
     for _ in range(case.answers):
         await bot.expect(*_CHAT, timeout_s=ANSWER_TIMEOUT_S, since_ns=opened)
+    if case.marker:
+        await _wait_for_marker(bot, opened)
 
 
 async def _wait_for_marker(bot: Bot, opened: int) -> None:
@@ -283,3 +284,50 @@ _SUCCESS_UNDO = (
 async def success(context: GroupContext) -> None:
     """The commander runs a valid form of each common command; the witness hears the feedback."""
     await _play(context, _Outline((COMMANDER, WITNESS), _SUCCESS, _SUCCESS_UNDO))
+
+
+# `commands/errors`: the same commands, run wrong.
+
+_ERRORS = (
+    _Case("setblock 4 -60 4 minecraft:not_a_block", answers=2),
+    _Case("setblock 4 -60", answers=2),
+    _Case("notacommand", answers=2),
+    _Case("setblock 4 400 4 minecraft:stone"),
+    _Case("setblock 4 -60 4 minecraft:stone", setup=("setblock 4 -60 4 minecraft:stone",)),
+    _Case("fill 0 -60 0 100 -50 100 minecraft:stone"),
+    _Case("clone 4 -60 6 6 -58 8 5 -60 6"),
+    _Case("kill @e[tag=nothing]"),
+    _Case("tp @s @e[tag=nothing]", answers=2),
+    _Case("give @s minecraft:diamond 0", answers=2),
+    _Case("give @s minecraft:not_an_item", answers=2),
+    _Case("clear @s minecraft:diamond"),
+    _Case("effect give @s minecraft:not_an_effect", answers=2),
+    _Case("effect clear @s minecraft:speed"),
+    _Case("enchant @s minecraft:sharpness"),
+    _Case("xp add @s abc", answers=2),
+    _Case("gamemode nonsense", answers=2),
+    _Case("gamemode survival", answers=0, marker=True),
+    _Case("difficulty normal"),
+    _Case("time set abc"),
+    _Case("weather rain abc", answers=2),
+    _Case("gamerule not_a_rule true", answers=2),
+    _Case("gamerule keep_inventory maybe", answers=2),
+    _Case("tick rate 0", answers=2),
+    _Case("seed extra", answers=2),
+    _Case("list nonsense", answers=2),
+    _Case("summon minecraft:not_an_entity", answers=2),
+    _Case("say", answers=2),
+)
+"""A parse error answers two messages, the error and the command up to the cursor; an error
+while the command runs answers one. A `gamemode survival` for a player in survival already
+answers nothing in vanilla. `summon minecraft:pig 12.5 400 12.5` is left out: vanilla summons
+it, with a random UUID (`setblock 4 400 4` is the position outside the world)."""
+
+_ERRORS_UNDO = (*reversed(_KILLS), _AREA_CLEAR)
+"""None of these changes anything in vanilla; a server that does one of them is put back."""
+
+
+@group("commands/errors", spec=_with_operators)
+async def errors(context: GroupContext) -> None:
+    """The commander runs commands wrong: a bad or missing argument, or no match for a selector."""
+    await _play(context, _Outline((COMMANDER,), _ERRORS, _ERRORS_UNDO))

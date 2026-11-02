@@ -1433,7 +1433,8 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
 - `groups.commands`: `COMMANDER` — the operator Bot that runs each command itself, so that its
   feedback is compared; `WITNESS` — the second operator of `commands/success`, which vanilla
   tells every command's feedback; `ANSWER_TIMEOUT_S` — how long a Bot waits for what a
-  command answers; `success` — the `commands/success` script.
+  command answers; `success` and `errors` — the `commands/success` and `commands/errors`
+  scripts.
 - `run`: `status_version` — status version extraction.
 
 ```python
