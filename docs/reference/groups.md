@@ -183,6 +183,20 @@ messages too. A server that kicks for fewer than 10 messages differs there.
 The kicks are the last cases, so a server that never kicks makes the Bot wait out its timeout
 only after the rest are compared.
 
+## Commands (`commands`)
+
+What a command answers, and what it sends around the answer. A Bot called `commander`, an operator, runs each command itself in a window of its own, so that the window holds what the server tells it. Control sets each case up before the window. The world is frozen, random ticks and the weather cycle are off, and joins are pinned to the spawn.
+
+Each window waits for the chat messages vanilla sends for the command: one for a success or an execution error, two for a parse error (the error, then the line with its context). Where vanilla sends none, the commander runs `/tellraw @s "mscts-end"` after the command and waits for that. A window compares the chat the commander receives and the packets the command sends from inside itself, such as a teleport or an item in the inventory. The Groups leave out what vanilla draws at random or sends on a schedule of its own, such as the sound of picking up the item a `give` drops.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `commands/success` | exact | none | The commander runs a valid form of 21 common commands, each in a window of its own: `setblock`, `fill`, `clone`, `summon`, `kill` (one pig, then two), `tp`, `give`, `enchant`, `clear`, `effect give`, `xp add`, `gamemode`, `difficulty`, `time set`, `weather`, `gamerule`, `tick rate`, `seed`, `list`, `execute if block` and `say`. A second operator, `witness`, stays in the world, and its chat is compared too: vanilla tells every other operator what a command answered. The last window is a `fill` of 28 672 blocks with a `tellraw @s` sent right after it, which vanilla answers in the order sent. | none |
+
+Vanilla answers from inside the command and sends block changes on the next tick, so after `setblock`, `fill` and `clone` the chat comes first and the block change after it. A server that sends them the other way round shows a difference.
+
+`summon` and a `kill` of one entity name it in the message with a hover that holds its UUID, which vanilla draws at random. `commands/success` summons its pig with a UUID of its own. `tick query` is not run, because its tick times come from the wall clock. `tick rate 20` is run instead.
+
 ## Joining a world (`join`)
 
 What a player receives when it joins, up to the end of the first chunk batch: the login, the configuration (registries, tags and enabled features) and the first play packets (the world, difficulty, abilities, position, inventory, health, experience, recipes, advancements, the world border and the first chunks).
