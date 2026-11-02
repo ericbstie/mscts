@@ -4029,3 +4029,27 @@ at all.
 
 How strong the explosion is: 4 for a TNT. The client spreads the debris
 particles over it. A difference shows a bigger or smaller explosion.
+
+## `set_entity_data.entries[].value[].options.color`
+
+**Effect particle color**
+
+The color of one of the particles that swirl around an entity under a
+potion effect, as an ARGB number. A difference tints the swirl another
+color.
+
+## `set_entity_data.entries[].value[].type`
+
+**Effect particle**
+
+The kind of one of the particles that swirl around an entity under a
+potion effect, such as `minecraft:entity_effect`. A difference shows
+another particle, or none.
+
+## `update_attributes.attributes[].modifiers[]`
+
+**Entity attribute modifier**
+
+One modifier on an attribute, such as the speed a potion of swiftness
+adds. A server that sends more or fewer of them gives the entity
+another value.

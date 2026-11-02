@@ -22,6 +22,7 @@ from support.player_server import PERFORM_RESPAWN, PlayerServer
 from support.window import window_since
 
 from mscts.bot import SYNC_REQUESTS
+from mscts.case_titles import TITLES
 from mscts.codec.packets import Direction
 from mscts.compare import OBSERVE_OPEN
 from mscts.group import GROUPS, GroupKind
@@ -583,3 +584,11 @@ def test_visibility_waits_for_the_watcher_to_track_the_other_bot_for_up_to_four_
     # the window's own barrier comes last
     assert shown == SYNC_REQUESTS
     assert never == 5 * SYNC_REQUESTS
+
+
+def test_the_fields_the_groups_watch_that_other_groups_did_not_have_titles() -> None:
+    assert {
+        "set_entity_data.entries[].value[].options.color",
+        "set_entity_data.entries[].value[].type",
+        "update_attributes.attributes[].modifiers[]",
+    } <= TITLES.keys()
