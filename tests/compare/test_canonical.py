@@ -786,6 +786,26 @@ def test_a_kick_reason_with_a_string_the_client_refuses_is_compared_as_its_bytes
     ]
 
 
+@pytest.mark.parametrize(
+    "lone_surrogate",
+    [
+        pytest.param(b"\x0a\x08\x00\x04text\x00\x03\xed\xa0\x80\x00", id="in-a-compound"),
+        pytest.param(b"\x09\x08\x00\x00\x00\x01\x00\x03\xed\xa0\x80", id="in-a-list"),
+        pytest.param(b"\x0a\x08\x00\x03\xed\xa0\x80\x00\x01a\x00", id="in-a-name"),
+    ],
+)
+def test_a_kick_reason_with_a_lone_surrogate_is_compared_as_its_bytes(
+    lone_surrogate: bytes,
+) -> None:
+    # readUTF reads ED A0 80 as a lone surrogate, which no Report file can hold: it has no UTF-8.
+    verdict = _compared(
+        "minecraft:disconnect", _disconnect(nbt("kick")), _disconnect(lone_surrogate)
+    )
+    assert _shown(verdict.gameplay) == [
+        ("reason", {"text": "kick"}, lone_surrogate, "play:disconnect.reason")
+    ]
+
+
 def test_an_array_in_a_text_component_is_compared_as_its_numbers() -> None:
     verdict = _compared(
         "minecraft:disconnect",

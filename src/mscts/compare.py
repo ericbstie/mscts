@@ -2767,7 +2767,7 @@ def _nesting(value: object) -> int:
 # Text components in play (#335): the codec keeps each as its NBT bytes; the Comparison decodes
 # them (`nbt.decode`) and compares each as the component the client reads it into
 # (docs/research/2026-09-26-comparison.md, Text components in NBT). A component that does not
-# decode is compared as its bytes.
+# decode, or that holds a lone surrogate, is compared as its bytes.
 
 
 def _decoded(fields: dict[str, _Value], components: _Trie) -> dict[str, _Value]:
@@ -2779,9 +2779,10 @@ def _decoded(fields: dict[str, _Value], components: _Trie) -> dict[str, _Value]:
 def _decoded_component(value: _Value) -> _Value:
     """`value`, a text component's NBT bytes, decoded into the value model, as it came.
 
-    It stays as it is unless it is bytes that decode to a tag (not TAG_End). A number is its
-    int or float (a float tag's a `_Float`), and an array a list of ints; a value deeper than
-    255 levels is cut, as `_plain` cuts a field's.
+    It stays as it is unless it is bytes that decode to a tag (not TAG_End) whose Strings and
+    names each have a UTF-8 form: readUTF reads a lone surrogate, which no Report file can
+    hold. A number is its int or float (a float tag's a `_Float`), and an array a list of
+    ints; a value deeper than 255 levels is cut, as `_plain` cuts a field's.
     """
     if not isinstance(value, bytes):
         return value
@@ -2789,9 +2790,32 @@ def _decoded_component(value: _Value) -> _Value:
         decoded = nbt.decode(value)
     except WireError:
         return value
-    if decoded is None:
+    if decoded is None or not all(map(_has_utf8, _strings(decoded))):
         return value
     return _plain(_from_nbt(decoded), "text component", ())
+
+
+def _strings(value: nbt.Value) -> Iterator[str]:
+    """Each String and compound name in `value`, a decoded tag. Iterative, as `_from_nbt` is."""
+    pending = [value]
+    while pending:
+        node = pending.pop()
+        if isinstance(node, str):
+            yield node
+        elif isinstance(node, dict):
+            yield from node
+            pending.extend(node.values())
+        elif isinstance(node, list):
+            pending.extend(node)
+
+
+def _has_utf8(text: str) -> bool:
+    """Whether `text` has a UTF-8 form, which a lone surrogate does not."""
+    try:
+        text.encode()
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 def _from_nbt(value: nbt.Value) -> object:

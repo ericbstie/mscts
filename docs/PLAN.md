@@ -2515,7 +2515,9 @@ proves it necessary:
      network traffic is reported at its path inside the component; it
      is network traffic only if the whole component reads the same
      (`_COVERS`), and the component is one test case, named by its
-     field. One that does not decode stays its bytes. Evidence, with
+     field. One that does not decode, or that holds a lone surrogate
+     (which has no UTF-8 form, so no Report could hold it), stays its
+     bytes. Evidence, with
      `javap` on the 26.3 client jar: docs/research/2026-09-26-
      comparison.md, *Text components in NBT*. A trim pattern's
      `description` (in a `smithing_trim` slot display) is not decoded:
