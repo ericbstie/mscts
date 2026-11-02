@@ -318,11 +318,17 @@ class CommandsServer:
     A marker (`tellraw @s "<token>"`) gets its token back as one message. Any other command
     gets `answers[command]` messages, one by default, and a Bot but Control gets each
     `late_s` after the one before, in order, while the server goes on answering the barrier
-    (a server behind schedule). Every serverbound Packet goes into `seen`.
+    (a server behind schedule). Each barrier answer of a Bot in `lag_s` comes that many seconds
+    late, and with `stale_for`, the last answer of each barrier that opens a window brings that
+    Bot a message in the same write: it is read after the Bot's own barrier and stamped before
+    the open Mark, which comes after the slowest Bot's barrier. Every serverbound Packet goes
+    into `seen`.
     """
 
     answers: Mapping[str, int] = field(default_factory=dict)
     late_s: float = 0.0
+    stale_for: str | None = None
+    lag_s: Mapping[str, float] = field(default_factory=dict)
     seen: list[Packet] = field(default_factory=list)
 
     async def __call__(self, peer: Peer) -> None:
@@ -343,7 +349,9 @@ class CommandsServer:
                         requests += 1
                         if (requests - 1) % SYNC_REQUESTS != 0:
                             await asyncio.sleep(TICK_S)  # a barrier's answers come a tick apart
-                        await peer.write(peer.raw_frame(AWARD_STATS, NO_STATISTICS))
+                        await asyncio.sleep(self.lag_s.get(peer.name, 0.0))
+                        stale = self._stale(peer, requests)
+                        await peer.write(peer.raw_frame(AWARD_STATS, NO_STATISTICS) + stale)
                     elif packet.name in (CHAT_COMMAND, SIGNED):
                         command = str((packet.fields or {})["command"])
                         for message in self._messages(command):
@@ -352,6 +360,16 @@ class CommandsServer:
                 pass  # the Bot left with something unread (a reset)
             finally:
                 teller.cancel()
+
+    def _stale(self, peer: Peer, requests: int) -> bytes:
+        """A message for the Bot in `stale_for` with the last answer of a barrier that opens.
+
+        The first barrier is the fixture's, and each window has one to open it and one to close.
+        """
+        last_of_an_opening = requests % (2 * SYNC_REQUESTS) == 0
+        if peer.name == self.stale_for and last_of_an_opening:
+            return chat(peer, "stale")
+        return b""
 
     def _messages(self, command: str) -> list[str]:
         if command.startswith(MARKER):
@@ -367,15 +385,23 @@ class CommandsServer:
                 await peer.write(frame)
 
 
-def server_for(group_id: str, *, late_s: float = 0.0, silent: str | None = None) -> CommandsServer:
+def server_for(
+    group_id: str,
+    *,
+    late_s: float = 0.0,
+    silent: str | None = None,
+    stale_for: str | None = None,
+) -> CommandsServer:
     """A fake that sends as many messages as vanilla does for each window of `group_id`.
 
-    A `silent` command gets none, where vanilla sends some: a hang.
+    A `silent` command gets none, where vanilla sends some: a hang. With `stale_for`, that Bot
+    is sent a message before each window opens, and the other Bots' barrier answers lag.
     """
     answers = {want.command: want.answers - len(want.then) for want in PLANS[group_id].windows}
     if silent is not None:
         answers[silent] = 0
-    return CommandsServer(answers=answers, late_s=late_s)
+    lag_s = {bot: TICK_S for bot in PLANS[group_id].bots if stale_for and bot != stale_for}
+    return CommandsServer(answers=answers, late_s=late_s, stale_for=stale_for, lag_s=lag_s)
 
 
 @dataclass(frozen=True)
@@ -704,3 +730,13 @@ async def test_no_feedback_turns_the_rule_off_after_the_fixture_and_on_before_it
     assert not any(
         "send_command_feedback" in command for w in result.windows[1:] for command in w.before
     )
+
+
+@pytest.mark.asyncio
+async def test_a_message_the_runner_got_before_the_window_opened_does_not_end_its_wait() -> None:
+    # With two Bots the window opens after the slower one's barrier, so a message the runner is
+    # sent after its own barrier is read in the body but stamped before the open Mark (#493).
+    server = server_for("commands/success", late_s=LATE_S, stale_for=commands.COMMANDER)
+    result = await replay("commands/success", server)
+
+    assert [window.heard for window in result.windows] == [want.heard for want in SUCCESS]
