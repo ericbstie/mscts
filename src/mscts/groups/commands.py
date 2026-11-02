@@ -46,7 +46,10 @@ _END = "mscts-end"
 """The marker's text: the same in every window and play, as it is compared (a counter made every
 play differ)."""
 
-_PLACES = {COMMANDER: "0.5 -60 14.5", WITNESS: "-3.5 -60 14.5"}
+PLAYER = "player"
+"""The Bot that is not an operator, in `commands/permissions`."""
+
+_PLACES = {COMMANDER: "0.5 -60 14.5", WITNESS: "-3.5 -60 14.5", PLAYER: "0.5 -60 14.5"}
 """Where Control puts each Bot: in chunk (0, 0), clear of every block the Groups set."""
 
 
@@ -331,3 +334,25 @@ _ERRORS_UNDO = (*reversed(_KILLS), _AREA_CLEAR)
 async def errors(context: GroupContext) -> None:
     """The commander runs commands wrong: a bad or missing argument, or no match for a selector."""
     await _play(context, _Outline((COMMANDER,), _ERRORS, _ERRORS_UNDO))
+
+
+# `commands/permissions`: a player who is not an operator runs operator commands.
+
+_PERMISSIONS = (
+    _Case("gamemode creative", answers=2),
+    _Case("op player", answers=2),
+    _Case("tp 0.5 -60 0.5", answers=2),
+    _Case("list"),
+)
+"""Four commands: vanilla kicks a player who is not an operator for spam at about its 10th command
+within a second or so (each chat command adds 20 to its count, 200 kicks), and the player cannot
+run the marker (`tellraw` is an operator's command), so the Group keeps well under that."""
+
+_PERMISSIONS_UNDO = ("gamemode survival player", "deop player")
+"""None of the first three changes anything in vanilla; a server that runs one is put back."""
+
+
+@group("commands/permissions", spec=_with_operators)
+async def permissions(context: GroupContext) -> None:
+    """A player who is not an operator runs three operator commands, and `list`."""
+    await _play(context, _Outline((PLAYER,), _PERMISSIONS, _PERMISSIONS_UNDO))

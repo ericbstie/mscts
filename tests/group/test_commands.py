@@ -29,6 +29,7 @@ from mscts.case_titles import TITLES
 from mscts.codec.packets import Direction, Packet
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
 from mscts.group import GROUPS, GroupKind
+from mscts.groups import chat as chat_groups
 from mscts.groups import commands
 from mscts.spec import Difficulty, ServerSpec
 from mscts.transcript import Transcript
@@ -208,6 +209,16 @@ ERRORS_UNDO = (
     AREA_CLEAR,
 )
 
+PERMISSIONS = (
+    Want("gamemode creative", answers=2),
+    Want("op player", answers=2),
+    Want("tp 0.5 -60 0.5", answers=2),
+    Want("list"),
+)
+"""Four commands: a player who is not an operator is kicked for spam at about its 10th."""
+
+PERMISSIONS_UNDO = ("gamemode survival player", "deop player")
+
 
 @dataclass(frozen=True)
 class Plan:
@@ -224,10 +235,17 @@ PLANS = {
         commands.COMMANDER, (commands.COMMANDER, commands.WITNESS), SUCCESS, SUCCESS_UNDO
     ),
     "commands/errors": Plan(commands.COMMANDER, (commands.COMMANDER,), ERRORS, ERRORS_UNDO),
+    "commands/permissions": Plan(
+        commands.PLAYER, (commands.PLAYER,), PERMISSIONS, PERMISSIONS_UNDO
+    ),
 }
 GROUP_IDS = tuple(PLANS)
-PLACES = {commands.COMMANDER: "0.5 -60 14.5", commands.WITNESS: "-3.5 -60 14.5"}
-"""Where Control puts each Bot, in the order they join: the first stands where the runner does."""
+PLACES = {
+    commands.COMMANDER: "0.5 -60 14.5",
+    commands.WITNESS: "-3.5 -60 14.5",
+    commands.PLAYER: "0.5 -60 14.5",
+}
+"""Where Control puts each Bot."""
 
 
 def fixture_start(bots: tuple[str, ...]) -> tuple[str, ...]:
@@ -237,7 +255,7 @@ def fixture_start(bots: tuple[str, ...]) -> tuple[str, ...]:
         "gamerule respawn_radius 0",
         "gamerule advance_weather false",
         "weather clear",
-        *(f"tp {bot} {place}" for bot, place in zip(bots, PLACES.values(), strict=False)),
+        *(f"tp {bot} {PLACES[bot]}" for bot in bots),
         "tp control 96.5 -60 96.5",
         "tick freeze",
         "gamerule random_tick_speed 0",
@@ -619,3 +637,18 @@ def test_every_packet_a_window_compares_has_a_title(group_id: str) -> None:
 
     titled = {key.split(".")[0] for key in TITLES}
     assert sorted(shown - titled) == []
+
+
+def test_permissions_runs_as_a_player_who_is_not_an_operator() -> None:
+    default = ServerSpec(host="127.0.0.1", port=25566)
+
+    assert commands.PLAYER not in GROUPS["commands/permissions"].spec(default).operators
+
+
+@pytest.mark.asyncio
+async def test_permissions_sends_no_more_commands_than_a_player_may_before_the_spam_kick() -> None:
+    # Vanilla kicks a player who is not an operator at its 10th command in about a second.
+    result = await play("commands/permissions")
+
+    mine = [s for s in sent(result.transcript) if s.bot == commands.PLAYER]
+    assert len(mine) <= chat_groups.UNDER_SPAM_MESSAGES
