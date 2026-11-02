@@ -2866,6 +2866,9 @@ def _read_object(component: dict[str, _Value]) -> dict[str, _Value]:
       and -0.0 false. A false flag stays: the style keeps it, unlike an absent one.
     - Each translation argument in `with` is as `_read_argument` writes it.
     - `color` is as `_read_color` writes it.
+    - The `value` of a `show_text` `hover_event` is a text component (`_read_component`):
+      `HoverEvent.CODEC` dispatches on `action`, and `HoverEvent$ShowText.CODEC` is
+      `ComponentSerialization.CODEC.fieldOf("value")` (javap).
     """
     result = dict(component)
     if isinstance(extra := result.get("extra"), list):
@@ -2879,6 +2882,9 @@ def _read_object(component: dict[str, _Value]) -> dict[str, _Value]:
             result[flag] = value != 0
     if "color" in result:
         result["color"] = _read_color(result["color"])
+    hover = result.get("hover_event")
+    if isinstance(hover, dict) and hover.get("action") == "show_text" and "value" in hover:
+        result["hover_event"] = {**hover, "value": _read_component(hover["value"])}
     return result
 
 
