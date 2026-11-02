@@ -3695,7 +3695,8 @@ _TEXT_COMPONENTS: Mapping[tuple[State, str], _Trie] = MappingProxyType(
 )
 """Where each clientbound packet that has text components holds them: `ComponentSerialization`'s
 stream codecs, NBT the codec keeps as bytes (`TEXT_COMPONENT`, or `NBT` where a schema says a
-text component)."""
+text component). Not here, so compared as bytes: a trim pattern's `description` in a slot
+display, and the text components in entity metadata and in item data components."""
 
 _CANONICAL: Mapping[
     tuple[State, str], Callable[[dict[str, _Value], _Context], dict[str, _Value]]

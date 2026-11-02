@@ -238,9 +238,10 @@ as the JSON above.
   `ComponentSerialization.CODEC.fieldOf("value")`, so its value is a text
   component read like any other.
 - **Not modelled.** A key the codecs never read (a record codec ignores
-  one), the `separator` of selector and NBT contents, a `show_entity`
-  hover's `name`, `fallback`, float translation arguments and colours
-  spelled with non-ASCII digits all stay as sent. Each such difference
+  one), a `type` other than `text`, the `separator` of selector and NBT
+  contents, a `show_entity` hover's `name` and `uuid`, `fallback`, float
+  translation arguments and colours spelled with non-ASCII digits all
+  stay as sent. Each such difference
   is still a gameplay Divergence, never a missed one.
 
 ## Python's json module (for the harness) — verified

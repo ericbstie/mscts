@@ -2522,6 +2522,7 @@ proves it necessary:
      comparison.md, *Text components in NBT*. A trim pattern's
      `description` (in a `smithing_trim` slot display) is not decoded:
      slot displays nest to any depth, which a fixed path does not reach.
+     Nor are the text components in entity metadata (`set_entity_data`).
    - `play` / `minecraft:level_chunk_with_light` (#22): `heightmaps`
      become the ones the client keeps, the last sent of each type it
      reads (an unknown id as 0), by type: it puts them into an `EnumMap`,
