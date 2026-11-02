@@ -3498,7 +3498,22 @@ def _light_text(value: _Value | Absent) -> str:
 
 
 _TEXT_COMPONENTS: Mapping[tuple[State, str], _Trie] = MappingProxyType(
-    {(State.PLAY, "minecraft:disconnect"): _Trie.of([("reason",)])}
+    {
+        (State.PLAY, name): _Trie.of(paths)
+        for name, paths in {
+            "minecraft:disconnect": [("reason",)],
+            "minecraft:system_chat": [("content",)],
+            "minecraft:disguised_chat": [("message",), ("sender_name",), ("target_name",)],
+            "minecraft:player_chat": [("unsigned_content",), ("sender_name",), ("target_name",)],
+            "minecraft:player_combat_kill": [("message",)],
+            "minecraft:open_screen": [("window_title",)],
+            "minecraft:update_advancements": [
+                ("advancements", EACH, "display", "title"),
+                ("advancements", EACH, "display", "description"),
+            ],
+            "minecraft:player_info_update": [("players", EACH, "display_name")],
+        }.items()
+    }
 )
 """Where each clientbound packet that has text components holds them: `ComponentSerialization`'s
 stream codecs, NBT the codec keeps as bytes (`TEXT_COMPONENT`, or `NBT` where a schema says a
